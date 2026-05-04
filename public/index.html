@@ -227,6 +227,12 @@
       cursor: not-allowed;
       opacity: 0.55;
       filter: grayscale(0.2);
+      min-width: 150px;
+    }
+
+    .switch-control.disabled .switch-text {
+      white-space: normal;
+      line-height: 1.05;
     }
 
     #buscarBtn {
@@ -833,7 +839,7 @@
 
             <div class="fontes-panel">
               <div class="switch-control fonte-toggle disabled" data-fonte="sinapi" role="switch" aria-checked="false" aria-disabled="true" tabindex="-1" title="SINAPI temporariamente desativado">
-                <span class="switch-text">SINAPI indisponível</span>
+                <span class="switch-text">SINAPI</span>
                 <span class="switch-track"><span class="switch-thumb"></span></span>
               </div>
               <div class="switch-control fonte-toggle ativo" data-fonte="pncp" role="switch" aria-checked="true" tabindex="0">
@@ -955,6 +961,7 @@
     let registrosAtuais = [];
     let registrosSinapiAtuais = [];
     let registrosFontesAtuais = [];
+    let estadoFontesConsulta = {};
     let itemAtual = null;
     let carrinho = [];
     let buscaEmAndamento = false;
@@ -1056,6 +1063,31 @@
       if (texto.includes("orse")) return "fonte-orse";
       if (texto.includes("pernambuco") || texto.includes("integrado")) return "fonte-peintegrado";
       return "";
+    }
+
+    function nomeFonte(fonte) {
+      return {
+        pncp: "PNCP",
+        sinapi: "SINAPI",
+        sicro: "SICRO",
+        orse: "ORSE-SE",
+        peintegrado: "Pernambuco Integrado",
+      }[fonte] || fonte;
+    }
+
+    function classeFonteId(fonte) {
+      return {
+        pncp: "fonte-pncp",
+        sinapi: "fonte-sinapi",
+        sicro: "fonte-sicro",
+        orse: "fonte-orse",
+        peintegrado: "fonte-peintegrado",
+      }[fonte] || "";
+    }
+
+    function setEstadoFonte(fonte, status, mensagem = "") {
+      estadoFontesConsulta[fonte] = { status, mensagem };
+      montarResultados();
     }
 
     function textoCurto(texto, limite = 180) {
@@ -1382,6 +1414,7 @@
       registrosAtuais = [];
       registrosSinapiAtuais = [];
       registrosFontesAtuais = [];
+      estadoFontesConsulta = {};
       avisoPncpAtual = "";
       consultaEmAndamento = true;
       alternarBotoesConsulta(true);
@@ -1402,13 +1435,16 @@
       document.getElementById("kpiMedia").innerText = "-";
       document.getElementById("kpiMediana").innerText = "-";
       document.getElementById("statusSinapi").innerText = "";
-      renderLoadingPrecos(item);
 
       const termoSinapi = item.pdm || item.descricao || document.getElementById("termo").value.trim();
       const fontesAdicionais = Object.entries(fontesAtivas)
         .filter(([fonte, ativo]) => ativo && fonte !== "sinapi" && fonte !== "pncp")
         .map(([fonte]) => fonte)
         .join(",");
+      fontesSelecionadas().forEach((fonte) => {
+        setEstadoFonte(fonte, "carregando", `Consultando ${nomeFonte(fonte)}...`);
+      });
+      montarResultados();
       const params = new URLSearchParams({
         codigo: item.codigo || termoSinapi,
         tipo: item.tipo,
@@ -1422,6 +1458,99 @@
         fontesAdicionais,
         periodoMeses: document.getElementById("periodoMeses").value,
       });
+
+      const tarefas = [];
+
+      if (fontesAtivas.pncp) {
+        const paramsPncp = new URLSearchParams(params);
+        paramsPncp.set("incluirPncp", "1");
+        paramsPncp.set("incluirSinapi", "0");
+        paramsPncp.set("fontesAdicionais", "");
+
+        tarefas.push((async () => {
+          try {
+            const resposta = await fetchComTimeout(`/api/precos?${paramsPncp.toString()}`, {}, 150000);
+            const dados = await resposta.json();
+
+            if (!resposta.ok) throw new Error(`${dados.erro || "Erro na consulta"}\n${dados.detalhe || ""}`);
+
+            registrosAtuais = (dados.registros || []).map(normalizarRegistroPncp);
+            avisoPncpAtual = dados.erroPncp || "";
+
+            if (dados.cache) {
+              const atualizado = dados.cacheAtualizadoEm
+                ? new Date(dados.cacheAtualizadoEm).toLocaleString("pt-BR")
+                : "";
+              avisoPncpAtual = `${avisoPncpAtual ? `${avisoPncpAtual}\n` : ""}Resultado PNCP exibido a partir do cache local${atualizado ? ` atualizado em ${atualizado}` : ""}.`;
+            }
+
+            document.getElementById("kpiQtd").innerText = dados.estatisticas.quantidade;
+            document.getElementById("kpiMenor").innerText = moeda(dados.estatisticas.menor);
+            document.getElementById("kpiMaior").innerText = moeda(dados.estatisticas.maior);
+            document.getElementById("kpiMedia").innerText = moeda(dados.estatisticas.media);
+            document.getElementById("kpiMediana").innerText = moeda(dados.estatisticas.mediana);
+            setEstadoFonte("pncp", "concluido", registrosAtuais.length ? "" : (avisoPncpAtual || "Nenhum registro PNCP válido."));
+          } catch (error) {
+            avisoPncpAtual = error.message;
+            setEstadoFonte("pncp", "erro", error.message);
+          }
+        })());
+      }
+
+      if (sinapiAtivo) {
+        const paramsSinapi = new URLSearchParams(params);
+        paramsSinapi.set("fonte", "sinapi");
+
+        tarefas.push((async () => {
+          try {
+            const resposta = await fetchComTimeout(`/api/precos-fonte?${paramsSinapi.toString()}`, {}, 120000);
+            const dados = await resposta.json();
+            if (!resposta.ok) throw new Error(dados.erro || "Erro na consulta SINAPI.");
+            registrosSinapiAtuais = (dados.registros || []).map(normalizarRegistroSinapi);
+            setEstadoFonte("sinapi", "concluido", dados.erro || (registrosSinapiAtuais.length ? "" : "Nenhum registro SINAPI disponível."));
+          } catch (error) {
+            setEstadoFonte("sinapi", "erro", error.message);
+          }
+        })());
+      }
+
+      fontesAdicionais.split(",").filter(Boolean).forEach((fonte) => {
+        const paramsFonte = new URLSearchParams(params);
+        paramsFonte.set("fonte", fonte);
+
+        tarefas.push((async () => {
+          try {
+            const resposta = await fetchComTimeout(`/api/precos-fonte?${paramsFonte.toString()}`, {}, 120000);
+            const dados = await resposta.json();
+            if (!resposta.ok) throw new Error(dados.erro || `Erro na consulta ${nomeFonte(fonte)}.`);
+
+            const origem = dados.nome || nomeFonte(fonte);
+            registrosFontesAtuais = registrosFontesAtuais
+              .filter((registro) => registro.origem !== origem)
+              .concat((dados.registros || []).map((registro) => normalizarRegistroFonte(registro, origem)));
+
+            setEstadoFonte(fonte, "concluido", dados.erro || (dados.registros?.length ? "" : "Nenhum preço encontrado nesta fonte."));
+          } catch (error) {
+            setEstadoFonte(fonte, "erro", error.message);
+          }
+        })());
+      });
+
+      try {
+        await Promise.allSettled(tarefas);
+        montarResultados();
+      } catch (error) {
+        document.getElementById("tabelaPrecos").innerHTML = `
+          <p class="status alerta">Erro na consulta:\n${escapeHtml(error.message)}</p>
+          <p class="empty">Você pode tentar novamente, usar um termo mais específico ou alterar as fontes selecionadas.</p>
+        `;
+      } finally {
+        consultaEmAndamento = false;
+        alternarBotoesConsulta(false);
+        setButtonLoading(botao, false, textoCarregandoBotao, textoNormalBotao);
+      }
+
+      return;
 
       try {
         const resposta = await fetchComTimeout(`/api/precos?${params.toString()}`, {}, 150000);
@@ -1518,6 +1647,41 @@
       `;
     }
 
+    function mensagemEstadoFonte(fonte) {
+      const estado = estadoFontesConsulta[fonte];
+      if (!estado) return "";
+
+      if (estado.status === "carregando") {
+        return `<p class="status info"><span class="loading-spinner"></span> ${escapeHtml(estado.mensagem || `Consultando ${nomeFonte(fonte)}...`)}</p>`;
+      }
+
+      if (estado.status === "erro") {
+        return `<p class="status alerta">${escapeHtml(estado.mensagem || `${nomeFonte(fonte)} indisponível agora.`)}</p>`;
+      }
+
+      if (estado.mensagem) {
+        return `<p class="empty">${escapeHtml(estado.mensagem)}</p>`;
+      }
+
+      return "";
+    }
+
+    function montarBlocoFonte(fonte, origem, registros) {
+      const estadoHtml = mensagemEstadoFonte(fonte);
+
+      return `
+        <div class="fonte-bloco ${classeFonteId(fonte) || classeFonte(origem)}">
+          <div class="fonte-titulo">
+            <h3>${escapeHtml(origem)}</h3>
+            <span class="badge fonte-badge">${registros.length} registro(s)</span>
+          </div>
+          <div class="resultado-lista">
+            ${registros.length ? registros.slice(0, 100).map(montarCardResultado).join("") : estadoHtml || "<p class='empty'>Nenhum preço encontrado nesta fonte.</p>"}
+          </div>
+        </div>
+      `;
+    }
+
     function montarResultados() {
       const pncp = registrosAtuais;
       const sinapi = registrosSinapiAtuais;
@@ -1526,22 +1690,14 @@
         ? `<p class="status alerta">Avisos da consulta:\n${escapeHtml(avisoPncpAtual)}</p>`
         : "";
 
-      if (!pncp.length && !sinapi.length && !adicionais.length) {
+      const temFonteCarregando = Object.values(estadoFontesConsulta).some((estado) => estado.status === "carregando");
+
+      if (!pncp.length && !sinapi.length && !adicionais.length && !temFonteCarregando) {
         document.getElementById("tabelaPrecos").innerHTML = `${avisoPncp}<p class='status'>Nenhum preço encontrado nas fontes selecionadas.</p>`;
         return;
       }
 
-      const blocoSinapi = sinapiAtivo ? `
-        <div class="fonte-bloco fonte-sinapi">
-          <div class="fonte-titulo">
-            <h3>SINAPI</h3>
-            <span class="badge fonte-badge">${sinapi.length} registro(s)</span>
-          </div>
-          <div class="resultado-lista">
-            ${sinapi.length ? sinapi.slice(0, 100).map(montarCardResultado).join("") : "<p class='empty'>Nenhum registro SINAPI disponível para os filtros atuais.</p>"}
-          </div>
-        </div>
-      ` : "";
+      const blocoSinapi = sinapiAtivo ? montarBlocoFonte("sinapi", "SINAPI", sinapi) : "";
       const gruposAdicionais = adicionais.reduce((acc, registro) => {
         acc[registro.origem] = acc[registro.origem] || [];
         acc[registro.origem].push(registro);
@@ -1560,20 +1716,19 @@
         </div>
       `).join("");
 
+      const fontesExtrasSemResultado = Object.entries(fontesAtivas)
+        .filter(([fonte, ativo]) => ativo && fonte !== "pncp" && fonte !== "sinapi")
+        .filter(([fonte]) => !adicionais.some((registro) => classeFonte(registro.origem) === classeFonteId(fonte)))
+        .map(([fonte]) => montarBlocoFonte(fonte, nomeFonte(fonte), []))
+        .join("");
+
       document.getElementById("tabelaPrecos").innerHTML = `
         ${avisoPncp}
-        ${fontesAtivas.pncp ? `<div class="fonte-bloco fonte-pncp">
-          <div class="fonte-titulo">
-            <h3>PNCP</h3>
-            <span class="badge fonte-badge">${pncp.length} registro(s)</span>
-          </div>
-          <div class="resultado-lista">
-            ${pncp.length ? pncp.slice(0, 100).map(montarCardResultado).join("") : "<p class='empty'>Nenhum registro PNCP válido.</p>"}
-          </div>
-        </div>` : ""}
+        ${fontesAtivas.pncp ? montarBlocoFonte("pncp", "PNCP", pncp) : ""}
 
         ${blocoSinapi}
         ${blocosAdicionais}
+        ${fontesExtrasSemResultado}
       `;
     }
 

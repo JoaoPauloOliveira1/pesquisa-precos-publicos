@@ -3341,6 +3341,63 @@ app.get("/api/precos", async (req, res) => {
   }
 });
 
+app.get("/api/precos-fonte", async (req, res) => {
+  const fonteId = String(req.query.fonte || "").trim().toLowerCase();
+  const termo = req.query.termo || req.query.codigo || "";
+  const uf = req.query.sinapiUf || "PB";
+  const periodoMeses = normalizarPeriodoMeses(req.query.periodoMeses);
+
+  try {
+    if (!fonteId) {
+      return res.status(400).json({
+        erro: "Informe a fonte a consultar.",
+      });
+    }
+
+    if (fonteId === "sinapi") {
+      return res.json(await consultarPrecosSinapi({
+        termo,
+        uf,
+        dataReferencia: req.query.sinapiDataReferencia || dataReferenciaPadrao(),
+        regime: req.query.sinapiRegime || "NAO_DESONERADO",
+      }));
+    }
+
+    if (fonteId === "sicro") {
+      return res.json(await consultarSicroNordeste({ termo, uf }));
+    }
+
+    if (fonteId === "orse") {
+      return res.json(await consultarOrseSe({ termo }));
+    }
+
+    if (fonteId === "peintegrado") {
+      return res.json(await consultarPeIntegrado({ termo, periodoMeses }));
+    }
+
+    if (FONTES_LOCAIS[fonteId]) {
+      return res.json(await consultarBaseLocal({ fonteId, termo, uf }));
+    }
+
+    if (FONTES_EXTERNAS[fonteId]) {
+      return res.json(consultarFonteExternaPendente(fonteId));
+    }
+
+    return res.status(400).json({
+      erro: "Fonte inválida.",
+    });
+  } catch (error) {
+    const fonte = FONTES_LOCAIS[fonteId] || FONTES_EXTERNAS[fonteId] || { nome: fonteId };
+    return res.json({
+      id: fonteId,
+      nome: fonte.nome || fonteId,
+      configurado: true,
+      erro: error.message,
+      registros: [],
+    });
+  }
+});
+
 function formatarMoedaPdf(valor) {
   const numero = normalizarValor(valor);
   if (Number.isNaN(numero)) return "-";
