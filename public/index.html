@@ -1343,18 +1343,15 @@
         return;
       }
 
-      if (fontesDiretasAtivas().length) {
+      if (!fontesAtivas.pncp) {
+        lista.innerHTML = "";
+        document.getElementById("cardItens").classList.add("hidden");
+        setStatus(status, "PNCP desligado. Vou pesquisar direto nas fontes selecionadas usando a descrição informada.", "info");
         consultarPrecos(criarItemPesquisaPorTermo(termo, tipo), buscarBtn, {
           textoNormal: "Buscar",
           textoCarregando: "Consultando fontes",
           somenteFontesDiretas: true,
         });
-      }
-
-      if (!fontesAtivas.pncp) {
-        lista.innerHTML = "";
-        document.getElementById("cardItens").classList.add("hidden");
-        setStatus(status, "PNCP desligado. Vou pesquisar direto nas fontes selecionadas usando a descrição informada.", "info");
         return;
       }
 
@@ -1364,6 +1361,14 @@
       lista.innerHTML = "";
       document.getElementById("cardItens").classList.add("hidden");
       document.getElementById("cardPrecos").classList.add("hidden");
+
+      if (fontesDiretasAtivas().length) {
+        consultarPrecos(criarItemPesquisaPorTermo(termo, tipo), buscarBtn, {
+          textoNormal: "Buscar",
+          textoCarregando: "Consultando fontes",
+          somenteFontesDiretas: true,
+        });
+      }
 
       try {
         const limiteItens = document.getElementById("limiteItens").value;
@@ -1501,20 +1506,26 @@
     }
 
     async function consultarPrecos(item, botao, opcoes = {}) {
-      if (consultaEmAndamento) return;
-
       const somenteFontesDiretas = Boolean(opcoes.somenteFontesDiretas);
+      const bloquearConsulta = !somenteFontesDiretas;
+
+      if (bloquearConsulta && consultaEmAndamento) return;
+
       itemAtual = item;
       if (!somenteFontesDiretas) registrosAtuais = [];
       registrosSinapiAtuais = [];
       registrosFontesAtuais = [];
       estadoFontesConsulta = somenteFontesDiretas && fontesAtivas.pncp ? { ...estadoFontesConsulta } : {};
       if (!somenteFontesDiretas) avisoPncpAtual = "";
-      consultaEmAndamento = true;
-      alternarBotoesConsulta(true);
+      if (bloquearConsulta) {
+        consultaEmAndamento = true;
+        alternarBotoesConsulta(true);
+      }
       const textoNormalBotao = opcoes.textoNormal || (item.diretoPncp ? "PNCP direto" : "Ver preços");
       const textoCarregandoBotao = opcoes.textoCarregando || "Consultando";
-      setButtonLoading(botao, true, textoCarregandoBotao, textoNormalBotao);
+      if (bloquearConsulta) {
+        setButtonLoading(botao, true, textoCarregandoBotao, textoNormalBotao);
+      }
 
       const cardPrecos = document.getElementById("cardPrecos");
       cardPrecos.classList.remove("hidden");
@@ -1643,9 +1654,11 @@
           <p class="empty">Você pode tentar novamente, usar um termo mais específico ou alterar as fontes selecionadas.</p>
         `;
       } finally {
-        consultaEmAndamento = false;
-        alternarBotoesConsulta(false);
-        if (!buscaEmAndamento) {
+        if (bloquearConsulta) {
+          consultaEmAndamento = false;
+          alternarBotoesConsulta(false);
+        }
+        if (bloquearConsulta && !buscaEmAndamento) {
           setButtonLoading(botao, false, textoCarregandoBotao, textoNormalBotao);
         }
       }
