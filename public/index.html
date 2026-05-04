@@ -45,35 +45,40 @@
         linear-gradient(135deg, rgba(0,122,61,0.96), rgba(0,91,170,0.96)),
         #007a3d;
       color: white;
-      padding: 24px;
+      padding: 22px 24px;
       border-radius: 12px;
       margin-bottom: 18px;
       border-bottom: 5px solid var(--emlurb-yellow);
       box-shadow: 0 12px 28px rgba(0, 95, 50, 0.18);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
     }
 
     .header-brand {
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 18px;
       min-width: 0;
     }
 
     .header-logo {
-      width: 76px;
-      height: 54px;
+      width: 112px;
+      height: 78px;
       object-fit: contain;
       border-radius: 8px;
       background: white;
-      padding: 4px;
+      padding: 6px;
       flex: none;
       box-shadow: 0 8px 20px rgba(0,0,0,0.14);
     }
 
     .header h1 {
       margin: 0;
-      font-size: 26px;
+      font-size: 25px;
       line-height: 1.15;
+      max-width: 720px;
     }
 
     .header p {
@@ -791,7 +796,34 @@
       font-weight: 700;
     }
 
+    .header-credit {
+      font-size: 12px;
+      color: rgba(255,255,255,0.82);
+      text-align: right;
+      white-space: nowrap;
+      align-self: flex-start;
+      padding-top: 4px;
+    }
+
+    .header-credit strong {
+      color: #fff;
+      font-weight: 800;
+    }
+
     @media (max-width: 980px) {
+      .header {
+        align-items: flex-start;
+      }
+
+      .header-logo {
+        width: 96px;
+        height: 68px;
+      }
+
+      .header h1 {
+        font-size: 22px;
+      }
+
       .app-grid {
         grid-template-columns: 1fr;
       }
@@ -821,6 +853,20 @@
     @media (max-width: 640px) {
       .container {
         padding: 12px;
+      }
+
+      .header {
+        display: grid;
+        gap: 10px;
+      }
+
+      .header-brand {
+        align-items: flex-start;
+      }
+
+      .header-credit {
+        text-align: left;
+        white-space: normal;
       }
 
       .form-grid,
@@ -859,8 +905,9 @@
     <div class="header">
       <div class="header-brand">
         <img class="header-logo" src="https://emlurb.recife.pe.gov.br/sites/default/files/emlurb.jpg" alt="EMLURB" />
-        <h1>Pesquisa de Preços</h1>
+        <h1>Pesquisa de Preços - Diretoria de Iluminação Pública</h1>
       </div>
+      <div class="header-credit">Desenvolvido por <strong>João Oliveira</strong></div>
     </div>
 
     <div class="app-grid">
@@ -1023,9 +1070,6 @@
       </div>
     </div>
 
-    <footer class="footer-credit">
-      Desenvolvido por <strong>João Oliveira</strong>
-    </footer>
   </div>
 
   <script>
