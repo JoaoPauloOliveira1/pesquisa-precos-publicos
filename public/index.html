@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>Pesquisa de Preços - PNCP e SINAPI</title>
+  <title>Pesquisa de Preços</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <style>
@@ -31,9 +31,27 @@
       margin-bottom: 18px;
     }
 
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .header-logo {
+      width: 76px;
+      height: 54px;
+      object-fit: contain;
+      border-radius: 6px;
+      background: white;
+      padding: 4px;
+      flex: none;
+    }
+
     .header h1 {
-      margin: 0 0 8px;
+      margin: 0;
       font-size: 26px;
+      line-height: 1.15;
     }
 
     .header p {
@@ -727,6 +745,19 @@
       margin: 0;
     }
 
+    .footer-credit {
+      margin-top: 18px;
+      padding: 12px 4px 0;
+      color: #6b7280;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .footer-credit strong {
+      color: #374151;
+      font-weight: 700;
+    }
+
     @media (max-width: 980px) {
       .app-grid {
         grid-template-columns: 1fr;
@@ -793,8 +824,10 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>Pesquisa de Preços - múltiplas fontes</h1>
-      <p>Busque itens, compare preços em múltiplas fontes, selecione os melhores e gere um relatório PDF.</p>
+      <div class="header-brand">
+        <img class="header-logo" src="https://emlurb.recife.pe.gov.br/sites/default/files/emlurb.jpg" alt="EMLURB" />
+        <h1>Pesquisa de Preços</h1>
+      </div>
     </div>
 
     <div class="app-grid">
@@ -812,6 +845,7 @@
               <select id="tipo">
                 <option value="material">Material</option>
                 <option value="servico">Serviço</option>
+                <option value="ambos">Ambos</option>
               </select>
             </label>
 
@@ -955,6 +989,10 @@
         </div>
       </div>
     </div>
+
+    <footer class="footer-credit">
+      Desenvolvido por <strong>João Oliveira</strong>
+    </footer>
   </div>
 
   <script>
@@ -1280,17 +1318,30 @@
 
       buscaEmAndamento = true;
       setButtonLoading(buscarBtn, true, "Buscando", "Buscar");
-        setStatus(status, "Buscando no catálogo PNCP/Compras.gov. A seleção do item é necessária para pesquisar preços do PNCP. Essa etapa pode demorar mais porque depende da API pública do Compras.gov.", "info");
+      setStatus(status, "Buscando no catálogo PNCP/Compras.gov. A seleção do item é necessária para pesquisar preços do PNCP. Essa etapa pode demorar mais porque depende da API pública do Compras.gov.", "info");
       lista.innerHTML = "";
       document.getElementById("cardItens").classList.add("hidden");
       document.getElementById("cardPrecos").classList.add("hidden");
 
       try {
         const limiteItens = document.getElementById("limiteItens").value;
-        const resposta = await fetchComTimeout(`/api/buscar-itens?q=${encodeURIComponent(termo)}&tipo=${tipo}&rapido=nao&limiteItens=${limiteItens}`, {}, 180000);
-        const dados = await resposta.json();
+        const tiposBusca = tipo === "ambos" ? ["material", "servico"] : [tipo];
+        const respostas = await Promise.all(tiposBusca.map(async (tipoBusca) => {
+          const resposta = await fetchComTimeout(`/api/buscar-itens?q=${encodeURIComponent(termo)}&tipo=${tipoBusca}&rapido=nao&limiteItens=${limiteItens}`, {}, 180000);
+          const dados = await resposta.json();
 
-        if (!resposta.ok) throw new Error(`${dados.erro || "Erro na busca"}\n${dados.detalhe || ""}`);
+          if (!resposta.ok) throw new Error(`${dados.erro || "Erro na busca"}\n${dados.detalhe || ""}`);
+          return dados;
+        }));
+
+        const dados = {
+          termo,
+          tipo,
+          total: respostas.reduce((total, resposta) => total + (resposta.itens || []).length, 0),
+          itens: respostas.flatMap((resposta) => resposta.itens || []),
+          aviso: respostas.map((resposta) => resposta.aviso).filter(Boolean).join("\n"),
+        };
+
         if (!dados.itens.length) {
           setStatus(
             status,
@@ -1436,7 +1487,8 @@
       document.getElementById("kpiMediana").innerText = "-";
       document.getElementById("statusSinapi").innerText = "";
 
-      const termoSinapi = item.pdm || item.descricao || document.getElementById("termo").value.trim();
+      const termoDigitado = document.getElementById("termo").value.trim();
+      const termoSinapi = item.pdm || item.descricao || termoDigitado;
       const fontesAdicionais = Object.entries(fontesAtivas)
         .filter(([fonte, ativo]) => ativo && fonte !== "sinapi" && fonte !== "pncp")
         .map(([fonte]) => fonte)
@@ -1500,6 +1552,7 @@
       if (sinapiAtivo) {
         const paramsSinapi = new URLSearchParams(params);
         paramsSinapi.set("fonte", "sinapi");
+        paramsSinapi.set("termo", termoDigitado || termoSinapi);
 
         tarefas.push((async () => {
           try {
@@ -1517,6 +1570,7 @@
       fontesAdicionais.split(",").filter(Boolean).forEach((fonte) => {
         const paramsFonte = new URLSearchParams(params);
         paramsFonte.set("fonte", fonte);
+        paramsFonte.set("termo", termoDigitado || termoSinapi);
 
         tarefas.push((async () => {
           try {
