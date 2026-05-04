@@ -1317,6 +1317,12 @@
       };
     }
 
+    function fontesDiretasAtivas() {
+      return Object.entries(fontesAtivas)
+        .filter(([fonte, ativo]) => ativo && fonte !== "pncp")
+        .map(([fonte]) => fonte);
+    }
+
     async function buscarItens() {
       if (buscaEmAndamento) return;
 
@@ -1337,15 +1343,18 @@
         return;
       }
 
+      if (fontesDiretasAtivas().length) {
+        consultarPrecos(criarItemPesquisaPorTermo(termo, tipo), buscarBtn, {
+          textoNormal: "Buscar",
+          textoCarregando: "Consultando fontes",
+          somenteFontesDiretas: true,
+        });
+      }
+
       if (!fontesAtivas.pncp) {
         lista.innerHTML = "";
         document.getElementById("cardItens").classList.add("hidden");
-        document.getElementById("cardPrecos").classList.add("hidden");
         setStatus(status, "PNCP desligado. Vou pesquisar direto nas fontes selecionadas usando a descrição informada.", "info");
-        await consultarPrecos(criarItemPesquisaPorTermo(termo, tipo), buscarBtn, {
-          textoNormal: "Buscar",
-          textoCarregando: "Consultando",
-        });
         return;
       }
 
@@ -1494,12 +1503,13 @@
     async function consultarPrecos(item, botao, opcoes = {}) {
       if (consultaEmAndamento) return;
 
+      const somenteFontesDiretas = Boolean(opcoes.somenteFontesDiretas);
       itemAtual = item;
-      registrosAtuais = [];
+      if (!somenteFontesDiretas) registrosAtuais = [];
       registrosSinapiAtuais = [];
       registrosFontesAtuais = [];
-      estadoFontesConsulta = {};
-      avisoPncpAtual = "";
+      estadoFontesConsulta = somenteFontesDiretas && fontesAtivas.pncp ? { ...estadoFontesConsulta } : {};
+      if (!somenteFontesDiretas) avisoPncpAtual = "";
       consultaEmAndamento = true;
       alternarBotoesConsulta(true);
       const textoNormalBotao = opcoes.textoNormal || (item.diretoPncp ? "PNCP direto" : "Ver preços");
@@ -1526,7 +1536,8 @@
         .filter(([fonte, ativo]) => ativo && fonte !== "sinapi" && fonte !== "pncp")
         .map(([fonte]) => fonte)
         .join(",");
-      fontesSelecionadas().forEach((fonte) => {
+      const fontesConsultaAgora = somenteFontesDiretas ? fontesDiretasAtivas() : fontesSelecionadas();
+      fontesConsultaAgora.forEach((fonte) => {
         setEstadoFonte(fonte, "carregando", `Consultando ${nomeFonte(fonte)}...`);
       });
       montarResultados();
@@ -1539,14 +1550,14 @@
         sinapiDataReferencia: document.getElementById("sinapiData").value,
         sinapiRegime: document.getElementById("sinapiRegime").value,
         incluirSinapi: sinapiAtivo ? "1" : "0",
-        incluirPncp: fontesAtivas.pncp ? "1" : "0",
+        incluirPncp: !somenteFontesDiretas && fontesAtivas.pncp ? "1" : "0",
         fontesAdicionais,
         periodoMeses: document.getElementById("periodoMeses").value,
       });
 
       const tarefas = [];
 
-      if (fontesAtivas.pncp) {
+      if (!somenteFontesDiretas && fontesAtivas.pncp) {
         const paramsPncp = new URLSearchParams(params);
         paramsPncp.set("incluirPncp", "1");
         paramsPncp.set("incluirSinapi", "0");
@@ -1582,7 +1593,7 @@
         })());
       }
 
-      if (sinapiAtivo) {
+      if (sinapiAtivo && (!somenteFontesDiretas || fontesDiretasAtivas().includes("sinapi"))) {
         const paramsSinapi = new URLSearchParams(params);
         paramsSinapi.set("fonte", "sinapi");
         paramsSinapi.set("termo", termoDigitado || termoSinapi);
@@ -1634,7 +1645,9 @@
       } finally {
         consultaEmAndamento = false;
         alternarBotoesConsulta(false);
-        setButtonLoading(botao, false, textoCarregandoBotao, textoNormalBotao);
+        if (!buscaEmAndamento) {
+          setButtonLoading(botao, false, textoCarregandoBotao, textoNormalBotao);
+        }
       }
 
       return;
