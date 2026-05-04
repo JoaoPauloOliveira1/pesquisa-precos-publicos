@@ -223,6 +223,12 @@
       --fonte-text: #be123c;
     }
 
+    .switch-control.disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      filter: grayscale(0.2);
+    }
+
     #buscarBtn {
       min-width: 116px;
       justify-self: end;
@@ -826,8 +832,8 @@
             </label>
 
             <div class="fontes-panel">
-              <div class="switch-control fonte-toggle" data-fonte="sinapi" role="switch" aria-checked="false" tabindex="0">
-                <span class="switch-text">SINAPI</span>
+              <div class="switch-control fonte-toggle disabled" data-fonte="sinapi" role="switch" aria-checked="false" aria-disabled="true" tabindex="-1" title="SINAPI temporariamente desativado">
+                <span class="switch-text">SINAPI indisponível</span>
                 <span class="switch-track"><span class="switch-thumb"></span></span>
               </div>
               <div class="switch-control fonte-toggle ativo" data-fonte="pncp" role="switch" aria-checked="true" tabindex="0">
@@ -972,6 +978,10 @@
     }
 
     function alternarFonte(fonte, elemento) {
+      if (elemento.classList.contains("disabled") || elemento.getAttribute("aria-disabled") === "true") {
+        return;
+      }
+
       fontesAtivas[fonte] = !fontesAtivas[fonte];
       sinapiAtivo = fontesAtivas.sinapi;
 
@@ -1238,7 +1248,7 @@
 
       buscaEmAndamento = true;
       setButtonLoading(buscarBtn, true, "Buscando", "Buscar");
-      setStatus(status, "Buscando no catálogo PNCP/Compras.gov. A seleção do item é necessária para pesquisar preços do PNCP.", "info");
+        setStatus(status, "Buscando no catálogo PNCP/Compras.gov. A seleção do item é necessária para pesquisar preços do PNCP. Essa etapa pode demorar mais porque depende da API pública do Compras.gov.", "info");
       lista.innerHTML = "";
       document.getElementById("cardItens").classList.add("hidden");
       document.getElementById("cardPrecos").classList.add("hidden");
