@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: pesquisa-precos-publicos
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: NODE_ENV
+        value: production
+      - key: AUTO_UPDATE_BASES
+        value: "0"
+      - key: ENABLE_SINAPI
+        value: "0"

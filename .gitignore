@@ -1,0 +1,19 @@
+node_modules/
+autoSINAPI_API/
+demandas-whatsapp-local/
+npm-debug.log*
+server-debug.*
+pncp-*.js
+relatorio-teste.pdf
+.env
+data/cache-consultas.json
+data/bases/sicro-downloads/
+data/bases/sicro-extraidos/
+data/bases/sicro.json
+data/bases/orse-downloads/
+data/bases/orse-extraidos/
+data/bases/orse.json
+data/bases/peintegrado-*.html
+data/bases/peintegrado-*.js
+Docker Desktop Installer.exe
+wsl-status-admin.txt

@@ -1,0 +1,1701 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Pesquisa de Preços - PNCP e SINAPI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: #f4f6f8;
+      color: #1f2937;
+    }
+
+    .container {
+      max-width: 1560px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    .header {
+      background: #111827;
+      color: white;
+      padding: 24px;
+      border-radius: 12px;
+      margin-bottom: 18px;
+    }
+
+    .header h1 {
+      margin: 0 0 8px;
+      font-size: 26px;
+    }
+
+    .header p {
+      margin: 0;
+      color: #d1d5db;
+    }
+
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 18px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+      margin-bottom: 16px;
+      min-width: 0;
+    }
+
+    .app-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .painel-coluna {
+      display: grid;
+      gap: 16px;
+      min-width: 0;
+      align-content: start;
+    }
+
+    .painel-direito {
+      position: sticky;
+      top: 12px;
+      max-height: calc(100vh - 24px);
+      overflow: auto;
+    }
+
+    h2, h3 {
+      margin: 0 0 14px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: minmax(150px, 1.1fr) minmax(130px, 0.8fr) minmax(105px, 0.45fr) auto;
+      gap: 8px;
+      align-items: end;
+    }
+
+    .campo-descricao {
+      grid-column: 1 / -1;
+    }
+
+    .campo-periodo {
+      min-width: 130px;
+    }
+
+    .campo-regime {
+      grid-column: span 2;
+    }
+
+    .sinapi-panel {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: 88px minmax(145px, 170px) minmax(180px, 1fr);
+      gap: 8px;
+      align-items: end;
+      border: 1px solid #dbeafe;
+      background: #eff6ff;
+      border-radius: 8px;
+      padding: 8px;
+      margin-top: 2px;
+      position: relative;
+    }
+
+    .fontes-panel {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 8px;
+      align-items: center;
+    }
+
+    .sinapi-panel::before {
+      content: "SINAPI";
+      position: absolute;
+      top: -9px;
+      left: 10px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 10px;
+      font-weight: bold;
+      padding: 0 6px;
+    }
+
+    .sinapi-toggle {
+      align-self: end;
+    }
+
+    .switch-control {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-width: 142px;
+      height: 40px;
+      padding: 7px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 999px;
+      background: #f9fafb;
+      color: #374151;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .switch-text {
+      white-space: nowrap;
+    }
+
+    .switch-track {
+      width: 38px;
+      height: 22px;
+      border-radius: 999px;
+      background: #d1d5db;
+      padding: 3px;
+      flex: none;
+      transition: background 0.16s ease;
+    }
+
+    .switch-thumb {
+      display: block;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.22);
+      transition: transform 0.16s ease;
+    }
+
+    .switch-control.ativo {
+      border-color: var(--fonte-border, #93c5fd);
+      background: var(--fonte-bg, #eff6ff);
+      color: var(--fonte-text, #1d4ed8);
+    }
+
+    .switch-control.ativo .switch-track {
+      background: var(--fonte-accent, #2563eb);
+    }
+
+    .switch-control.ativo .switch-thumb {
+      transform: translateX(16px);
+    }
+
+    .fonte-toggle[data-fonte="pncp"] {
+      --fonte-accent: #2563eb;
+      --fonte-border: #bfdbfe;
+      --fonte-bg: #eff6ff;
+      --fonte-text: #1d4ed8;
+    }
+
+    .fonte-toggle[data-fonte="sinapi"] {
+      --fonte-accent: #059669;
+      --fonte-border: #a7f3d0;
+      --fonte-bg: #ecfdf5;
+      --fonte-text: #047857;
+    }
+
+    .fonte-toggle[data-fonte="sicro"] {
+      --fonte-accent: #d97706;
+      --fonte-border: #fed7aa;
+      --fonte-bg: #fff7ed;
+      --fonte-text: #b45309;
+    }
+
+    .fonte-toggle[data-fonte="orse"] {
+      --fonte-accent: #7c3aed;
+      --fonte-border: #ddd6fe;
+      --fonte-bg: #f5f3ff;
+      --fonte-text: #6d28d9;
+    }
+
+    .fonte-toggle[data-fonte="peintegrado"] {
+      --fonte-accent: #be123c;
+      --fonte-border: #fecdd3;
+      --fonte-bg: #fff1f2;
+      --fonte-text: #be123c;
+    }
+
+    #buscarBtn {
+      min-width: 116px;
+      justify-self: end;
+    }
+
+    label {
+      display: grid;
+      gap: 5px;
+      font-size: 12px;
+      font-weight: bold;
+      color: #4b5563;
+    }
+
+    input, select, button {
+      width: 100%;
+      padding: 10px 11px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      font-size: 14px;
+    }
+
+    button {
+      background: #111827;
+      color: white;
+      cursor: pointer;
+      border: none;
+      font-weight: bold;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 40px;
+      transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+    }
+
+    button:hover {
+      background: #374151;
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.62;
+      transform: none;
+    }
+
+    button.secondary {
+      background: #eef2ff;
+      color: #1e3a8a;
+      border: 1px solid #c7d2fe;
+    }
+
+    button.secondary:hover {
+      background: #dbeafe;
+    }
+
+    button.danger {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+
+    button.success {
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+
+    button.ghost {
+      background: #f9fafb;
+      color: #374151;
+      border: 1px solid #e5e7eb;
+    }
+
+    button.compact {
+      min-height: 34px;
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+
+    .btn-loading::before {
+      content: "";
+      width: 13px;
+      height: 13px;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .status {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #4b5563;
+      white-space: pre-wrap;
+    }
+
+    .status.info {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      color: #1e40af;
+      padding: 10px;
+    }
+
+    .status.ok {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 8px;
+      color: #166534;
+      padding: 10px;
+    }
+
+    .status.alerta {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 8px;
+      color: #9a3412;
+      padding: 10px;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .item-lista,
+    .resultado-lista,
+    .carrinho-lista {
+      display: grid;
+      gap: 10px;
+    }
+
+    .item {
+      display: grid;
+      grid-template-columns: 90px minmax(0, 1fr) 150px;
+      gap: 12px;
+      align-items: center;
+      border: 1px solid #e5e7eb;
+      background: #fafafa;
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    .item.direto-pncp {
+      border-color: #bfdbfe;
+      background: #eff6ff;
+    }
+
+    .codigo {
+      font-weight: bold;
+      color: #111827;
+    }
+
+    .descricao {
+      min-width: 0;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .detalhe {
+      display: block;
+      margin-top: 5px;
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 14px;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .kpi {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .kpi span {
+      display: block;
+      color: #6b7280;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .kpi strong {
+      font-size: 17px;
+    }
+
+    .fonte-titulo {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 18px 0 10px;
+      padding-top: 2px;
+    }
+
+    .fonte-bloco {
+      margin-top: 16px;
+      padding: 10px;
+      border: 1px solid var(--fonte-border, #e5e7eb);
+      border-left: 6px solid var(--fonte-accent, #6b7280);
+      border-radius: 8px;
+      background: var(--fonte-bg, #ffffff);
+    }
+
+    .fonte-bloco:first-child {
+      margin-top: 0;
+    }
+
+    .fonte-bloco.fonte-pncp,
+    .resultado.fonte-pncp,
+    .carrinho-item.fonte-pncp {
+      --fonte-accent: #2563eb;
+      --fonte-border: #bfdbfe;
+      --fonte-bg: #eff6ff;
+      --fonte-text: #1d4ed8;
+    }
+
+    .fonte-bloco.fonte-sinapi,
+    .resultado.fonte-sinapi,
+    .carrinho-item.fonte-sinapi {
+      --fonte-accent: #059669;
+      --fonte-border: #a7f3d0;
+      --fonte-bg: #ecfdf5;
+      --fonte-text: #047857;
+    }
+
+    .fonte-bloco.fonte-sicro,
+    .resultado.fonte-sicro,
+    .carrinho-item.fonte-sicro {
+      --fonte-accent: #d97706;
+      --fonte-border: #fed7aa;
+      --fonte-bg: #fff7ed;
+      --fonte-text: #b45309;
+    }
+
+    .fonte-bloco.fonte-orse,
+    .resultado.fonte-orse,
+    .carrinho-item.fonte-orse {
+      --fonte-accent: #7c3aed;
+      --fonte-border: #ddd6fe;
+      --fonte-bg: #f5f3ff;
+      --fonte-text: #6d28d9;
+    }
+
+    .fonte-bloco.fonte-peintegrado,
+    .resultado.fonte-peintegrado,
+    .carrinho-item.fonte-peintegrado {
+      --fonte-accent: #be123c;
+      --fonte-border: #fecdd3;
+      --fonte-bg: #fff1f2;
+      --fonte-text: #be123c;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      color: #075985;
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    .fonte-badge {
+      background: var(--fonte-accent, #0ea5e9);
+      color: #fff;
+    }
+
+    .loading-card {
+      border: 1px solid #dbeafe;
+      background: #eff6ff;
+      border-radius: 8px;
+      padding: 14px;
+      margin-top: 14px;
+    }
+
+    .loading-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: bold;
+      color: #1e3a8a;
+      margin-bottom: 10px;
+    }
+
+    .loading-spinner {
+      width: 18px;
+      height: 18px;
+      border: 3px solid #bfdbfe;
+      border-right-color: #1d4ed8;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex: none;
+    }
+
+    .loading-steps {
+      display: grid;
+      gap: 8px;
+      margin: 12px 0;
+      color: #1f2937;
+      font-size: 13px;
+    }
+
+    .loading-step {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .loading-step::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #2563eb;
+      flex: none;
+    }
+
+    .skeleton {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .skeleton span {
+      height: 12px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #dbeafe, #ffffff, #dbeafe);
+      background-size: 220% 100%;
+      animation: shimmer 1.2s ease-in-out infinite;
+    }
+
+    .skeleton span:nth-child(2) {
+      width: 78%;
+    }
+
+    .skeleton span:nth-child(3) {
+      width: 58%;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 100% 0; }
+      100% { background-position: -100% 0; }
+    }
+
+    .resultado {
+      border: 1px solid var(--fonte-border, #e5e7eb);
+      border-left: 5px solid var(--fonte-accent, #6b7280);
+      border-radius: 8px;
+      padding: 12px;
+      background: linear-gradient(90deg, var(--fonte-bg, #fff) 0, #fff 34%);
+    }
+
+    .resultado-topo {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 132px;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .resultado-acoes {
+      display: grid;
+      gap: 8px;
+      align-items: start;
+    }
+
+    .resultado h4 {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    .preco {
+      text-align: right;
+      font-size: 18px;
+      font-weight: bold;
+      color: #111827;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .meta {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 7px;
+      padding: 8px;
+      min-width: 0;
+    }
+
+    .meta span {
+      display: block;
+      color: #6b7280;
+      font-size: 11px;
+      margin-bottom: 3px;
+    }
+
+    .meta strong {
+      display: block;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      font-size: 12px;
+    }
+
+    a {
+      color: #1d4ed8;
+      font-weight: bold;
+    }
+
+    .carrinho-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .carrinho-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 120px 90px;
+      gap: 10px;
+      align-items: start;
+      border: 1px solid var(--fonte-border, #e5e7eb);
+      border-left: 5px solid var(--fonte-accent, #6b7280);
+      border-radius: 8px;
+      padding: 10px;
+      background: var(--fonte-bg, #fafafa);
+    }
+
+    .carrinho-titulo {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .carrinho-descricao {
+      font-weight: bold;
+      color: #111827;
+      line-height: 1.3;
+      margin-bottom: 6px;
+    }
+
+    .carrinho-meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px 10px;
+      color: #6b7280;
+      font-size: 12px;
+    }
+
+    .carrinho-meta span {
+      overflow-wrap: anywhere;
+    }
+
+    .empty {
+      color: #6b7280;
+      font-size: 13px;
+      margin: 0;
+    }
+
+    @media (max-width: 980px) {
+      .app-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .painel-direito {
+        position: static;
+        max-height: none;
+        overflow: visible;
+      }
+
+      .form-grid,
+      .resultado-topo,
+      .meta-grid,
+      .kpis {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      #buscarBtn {
+        justify-self: stretch;
+      }
+
+      .preco {
+        text-align: left;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .container {
+        padding: 12px;
+      }
+
+      .form-grid,
+      .item,
+      .resultado-topo,
+      .meta-grid,
+      .kpis,
+      .carrinho-item {
+        grid-template-columns: 1fr;
+      }
+
+      .campo-descricao,
+      .campo-regime,
+      .sinapi-panel,
+      .sinapi-toggle {
+        grid-column: auto;
+      }
+
+      .switch-control {
+        width: 100%;
+      }
+
+      .sinapi-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .fontes-panel {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Pesquisa de Preços - múltiplas fontes</h1>
+      <p>Busque itens, compare preços em múltiplas fontes, selecione os melhores e gere um relatório PDF.</p>
+    </div>
+
+    <div class="app-grid">
+      <div class="painel-coluna">
+        <div class="card">
+          <h2>1. Buscar preços</h2>
+          <div class="form-grid">
+            <label class="campo-descricao">
+              Descrição
+              <input id="termo" placeholder="Ex: cimento, eletroduto, cabo de cobre..." />
+            </label>
+
+            <label class="campo-pncp">
+              Tipo
+              <select id="tipo">
+                <option value="material">Material</option>
+                <option value="servico">Serviço</option>
+              </select>
+            </label>
+
+            <label class="campo-pncp campo-periodo">
+              Período PNCP
+              <select id="periodoMeses">
+                <option value="1">Último mês</option>
+                <option value="2">Últimos 2 meses</option>
+                <option value="3">Últimos 3 meses</option>
+                <option value="4">Últimos 4 meses</option>
+                <option value="5">Últimos 5 meses</option>
+                <option value="6" selected>Últimos 6 meses</option>
+              </select>
+            </label>
+
+            <label class="campo-pncp">
+              Mostrar
+              <select id="limiteItens">
+                <option value="10">10 itens</option>
+                <option value="50">50 itens</option>
+                <option value="100" selected>100 itens</option>
+                <option value="200">200 itens</option>
+              </select>
+            </label>
+
+            <div class="fontes-panel">
+              <div class="switch-control fonte-toggle" data-fonte="sinapi" role="switch" aria-checked="false" tabindex="0">
+                <span class="switch-text">SINAPI</span>
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+              </div>
+              <div class="switch-control fonte-toggle ativo" data-fonte="pncp" role="switch" aria-checked="true" tabindex="0">
+                <span class="switch-text">PNCP</span>
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+              </div>
+              <div class="switch-control fonte-toggle" data-fonte="sicro" role="switch" aria-checked="false" tabindex="0">
+                <span class="switch-text">SICRO</span>
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+              </div>
+              <div class="switch-control fonte-toggle" data-fonte="orse" role="switch" aria-checked="false" tabindex="0">
+                <span class="switch-text">ORSE-SE</span>
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+              </div>
+              <div class="switch-control fonte-toggle" data-fonte="peintegrado" role="switch" aria-checked="false" tabindex="0">
+                <span class="switch-text">PE Integrado</span>
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+              </div>
+            </div>
+
+            <div id="sinapiPanel" class="sinapi-panel hidden">
+              <label>
+                UF SINAPI
+                <select id="sinapiUf">
+                  <option value="PB">PB</option>
+                  <option value="PE" selected>PE</option>
+                  <option value="RN">RN</option>
+                  <option value="CE">CE</option>
+                  <option value="BA">BA</option>
+                  <option value="SP">SP</option>
+                  <option value="RJ">RJ</option>
+                  <option value="MG">MG</option>
+                  <option value="ES">ES</option>
+                  <option value="PR">PR</option>
+                  <option value="SC">SC</option>
+                  <option value="RS">RS</option>
+                  <option value="GO">GO</option>
+                  <option value="DF">DF</option>
+                  <option value="MT">MT</option>
+                  <option value="MS">MS</option>
+                  <option value="AC">AC</option>
+                  <option value="AL">AL</option>
+                  <option value="AM">AM</option>
+                  <option value="AP">AP</option>
+                  <option value="MA">MA</option>
+                  <option value="PA">PA</option>
+                  <option value="PI">PI</option>
+                  <option value="RO">RO</option>
+                  <option value="RR">RR</option>
+                  <option value="SE">SE</option>
+                  <option value="TO">TO</option>
+                </select>
+              </label>
+
+              <label>
+                Mês SINAPI
+                <input id="sinapiData" type="month" />
+              </label>
+
+              <label>
+                Regime SINAPI
+                <select id="sinapiRegime">
+                  <option value="NAO_DESONERADO">Não desonerado</option>
+                  <option value="DESONERADO">Desonerado</option>
+                </select>
+              </label>
+            </div>
+
+            <button id="buscarBtn" onclick="buscarItens()">Buscar</button>
+          </div>
+
+          <div id="statusBusca" class="status"></div>
+        </div>
+
+        <div id="cardItens" class="card hidden">
+          <h2>2. Catálogo PNCP / Compras.gov</h2>
+          <div id="listaItens" class="item-lista"></div>
+        </div>
+      </div>
+
+      <div class="painel-coluna painel-direito">
+        <div id="cardPrecos" class="card hidden">
+          <h2>3. Resultados por fonte</h2>
+          <div id="itemSelecionado" class="status"></div>
+
+          <div class="kpis">
+            <div class="kpi"><span>PNCP</span><strong id="kpiQtd">-</strong></div>
+            <div class="kpi"><span>Menor PNCP</span><strong id="kpiMenor">-</strong></div>
+            <div class="kpi"><span>Maior PNCP</span><strong id="kpiMaior">-</strong></div>
+            <div class="kpi"><span>Média PNCP</span><strong id="kpiMedia">-</strong></div>
+            <div class="kpi"><span>Mediana PNCP</span><strong id="kpiMediana">-</strong></div>
+          </div>
+
+          <div class="toolbar">
+            <button class="secondary" onclick="baixarCSV()">Baixar CSV</button>
+            <span class="status" id="statusSinapi"></span>
+          </div>
+
+          <div id="tabelaPrecos"></div>
+        </div>
+
+        <div class="card">
+          <div class="carrinho-head">
+            <h2>4. Preços selecionados</h2>
+            <div class="toolbar">
+              <button class="secondary" onclick="gerarRelatorioPdf(this)">Gerar relatório PDF</button>
+              <button class="danger" onclick="limparCarrinho()">Limpar seleção</button>
+            </div>
+          </div>
+          <div id="carrinho" class="carrinho-lista">
+            <p class="empty">Nenhum preço selecionado ainda.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let registrosAtuais = [];
+    let registrosSinapiAtuais = [];
+    let registrosFontesAtuais = [];
+    let itemAtual = null;
+    let carrinho = [];
+    let buscaEmAndamento = false;
+    let consultaEmAndamento = false;
+    let sinapiAtivo = false;
+    const fontesAtivas = {
+      sinapi: false,
+      pncp: true,
+      sicro: false,
+      orse: false,
+      peintegrado: false,
+    };
+    let avisoPncpAtual = "";
+    let buscaCatalogoToken = 0;
+
+    function setMesPadrao() {
+      const data = new Date();
+      data.setMonth(data.getMonth() - 1);
+      document.getElementById("sinapiData").value =
+        `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}`;
+    }
+
+    function alternarFonte(fonte, elemento) {
+      fontesAtivas[fonte] = !fontesAtivas[fonte];
+      sinapiAtivo = fontesAtivas.sinapi;
+
+      if (fonte === "sinapi") {
+        document.getElementById("sinapiPanel").classList.toggle("hidden", !sinapiAtivo);
+      }
+
+      elemento.classList.toggle("ativo", fontesAtivas[fonte]);
+      elemento.setAttribute("aria-checked", String(fontesAtivas[fonte]));
+
+      document.querySelectorAll(".campo-pncp").forEach((campo) => {
+        campo.classList.toggle("hidden", !fontesAtivas.pncp);
+      });
+    }
+
+    function setStatus(elemento, mensagem, tipo = "") {
+      elemento.className = `status${tipo ? ` ${tipo}` : ""}`;
+      elemento.innerText = mensagem;
+    }
+
+    function setButtonLoading(botao, carregando, textoCarregando, textoNormal) {
+      if (!botao) return;
+      botao.disabled = carregando;
+      botao.innerText = carregando ? textoCarregando : textoNormal;
+      botao.classList.toggle("btn-loading", carregando);
+    }
+
+    function escapeHtml(valor) {
+      return String(valor ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function urlPncpSegura(url) {
+      const texto = String(url || "");
+      return texto.startsWith("https://pncp.gov.br/") ? texto : "";
+    }
+
+    function numeroMoeda(valor) {
+      if (typeof valor === "number") return valor;
+      let texto = String(valor ?? "").trim().replace(/\s/g, "");
+      if (!texto) return 0;
+
+      texto = texto.replace(/[^\d,.-]/g, "");
+      if (texto.includes(",") && texto.includes(".")) {
+        const ultimaVirgula = texto.lastIndexOf(",");
+        const ultimoPonto = texto.lastIndexOf(".");
+        texto = ultimaVirgula > ultimoPonto
+          ? texto.replace(/\./g, "").replace(",", ".")
+          : texto.replace(/,/g, "");
+      } else if (texto.includes(",")) {
+        texto = texto.replace(",", ".");
+      }
+
+      return Number(texto);
+    }
+
+    function moeda(valor) {
+      const numero = numeroMoeda(valor);
+      if (Number.isNaN(numero)) return "-";
+      return numero.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    }
+
+    function classeFonte(origem) {
+      const texto = String(origem || "").toLowerCase();
+      if (texto.includes("pncp")) return "fonte-pncp";
+      if (texto.includes("sinapi")) return "fonte-sinapi";
+      if (texto.includes("sicro")) return "fonte-sicro";
+      if (texto.includes("orse")) return "fonte-orse";
+      if (texto.includes("pernambuco") || texto.includes("integrado")) return "fonte-peintegrado";
+      return "";
+    }
+
+    function textoCurto(texto, limite = 180) {
+      const valor = String(texto || "");
+      return valor.length > limite ? `${valor.slice(0, limite)}...` : valor;
+    }
+
+    function idRegistro(registro) {
+      return [
+        registro.origem,
+        registro.codigo,
+        registro.licitacao,
+        registro.link,
+        registro.precoUnitario,
+        registro.data
+      ].join("|");
+    }
+
+    function apenasPncpDireto(itens) {
+      return itens.length === 1 && itens[0]?.diretoPncp;
+    }
+
+    function ordenarPncpDiretoPorUltimo(itens) {
+      return [...itens].sort((a, b) => Number(Boolean(a.diretoPncp)) - Number(Boolean(b.diretoPncp)));
+    }
+
+    function renderizarItensEncontrados(dados, lista) {
+      lista.innerHTML = "";
+
+      ordenarPncpDiretoPorUltimo(dados.itens || []).forEach((item) => {
+        const div = document.createElement("div");
+        div.className = item.diretoPncp ? "item direto-pncp" : "item";
+        const detalhe = [
+          item.somenteSinapi ? "Resultado rápido por PDM" : "",
+          item.diretoPncp ? "Último recurso: busca direta no PNCP" : "",
+          item.grupo ? `Grupo: ${item.grupo}` : "",
+          item.classe ? `Classe: ${item.classe}` : "",
+          item.pdm ? `PDM: ${item.pdm}` : "",
+          item.subclasse ? `Subclasse: ${item.subclasse}` : "",
+          item.unidade ? `Unidade: ${item.unidade}` : "",
+        ].filter(Boolean).join(" | ");
+
+        div.innerHTML = `
+          <div class="codigo">${escapeHtml(item.codigo)}</div>
+          <div class="descricao">
+            ${escapeHtml(item.descricao || "-")}
+            <span class="detalhe">${escapeHtml(detalhe)}</span>
+          </div>
+          <button type="button">${item.diretoPncp ? "PNCP direto" : "Ver preços"}</button>
+        `;
+
+        div.querySelector("button").addEventListener("click", (event) => consultarPrecos(item, event.currentTarget));
+        lista.appendChild(div);
+      });
+
+      document.getElementById("cardItens").classList.remove("hidden");
+    }
+
+    async function fetchComTimeout(url, opcoes = {}, timeoutMs = 45000) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        return await fetch(url, {
+          ...opcoes,
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (error.name === "AbortError") {
+          throw new Error("A consulta demorou demais porque a API pública demorou a responder. Tente novamente ou use uma descrição mais específica.");
+        }
+
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    function normalizarRegistroPncp(r) {
+      const contratacao = r.pncp?.contratacao || {};
+      const item = r.pncp?.item || {};
+      const identificador = r.licitacao?.identificador || r.idCompra || "";
+      const licitacao = contratacao.numeroEdital
+        ? `Edital ${contratacao.numeroEdital}`
+        : identificador;
+
+      return {
+        origem: "PNCP",
+        codigo: r.codigoItemCatalogo || r.codigo || item.numeroItem || "",
+        descricao: r.descricaoItem || r.descricao || item.descricao || "",
+        unidade: r.siglaUnidadeFornecimento || r.siglaUnidadeMedida || r.nomeUnidadeMedida || item.unidadeMedida || "",
+        quantidade: item.quantidadeHomologada || r.quantidade || "",
+        precoUnitario: item.valorUnitarioHomologado || r.precoUnitario || "",
+        fornecedor: r.nomeFornecedor || item.fornecedor || "",
+        orgao: contratacao.orgao || r.nomeUasg || "",
+        data: item.dataResultadoHomologacao || r.dataResultado || r.dataCompra || "",
+        licitacao,
+        referencia: contratacao.numeroControlePncp || identificador,
+        link: r.linkPncpGerado || contratacao.linkPncp || "",
+        numeroItem: item.numeroItem || r.numeroItemCompra || "",
+        meta: contratacao,
+      };
+    }
+
+    function normalizarRegistroSinapi(r) {
+      return {
+        origem: "SINAPI",
+        tipoSinapi: r.tipoSinapi || "",
+        codigo: r.codigo || "",
+        descricao: r.descricao || "",
+        unidade: r.unidade || "",
+        quantidade: "",
+        precoUnitario: r.precoUnitario || "",
+        fornecedor: "",
+        orgao: `${r.uf || ""} ${r.dataReferencia || ""}`.trim(),
+        data: r.dataReferencia || "",
+        licitacao: "",
+        referencia: `${r.tipoSinapi || "SINAPI"} ${r.codigo || ""} | ${r.regime || ""}`,
+        link: "",
+      };
+    }
+
+    function normalizarRegistroFonte(r, nomeFonte) {
+      return {
+        origem: r.origem || nomeFonte || "Fonte adicional",
+        tipoSinapi: r.tipoSinapi || "",
+        codigo: r.codigo || "",
+        descricao: r.descricao || "",
+        unidade: r.unidade || "",
+        quantidade: r.quantidade || "",
+        precoUnitario: r.precoUnitario || "",
+        fornecedor: r.fornecedor || "",
+        orgao: r.orgao || `${r.uf || ""} ${r.dataReferencia || ""}`.trim(),
+        data: r.dataReferencia || r.data || "",
+        licitacao: r.ata || r.processo || r.licitacao?.identificador || "",
+        referencia: r.referencia || `${nomeFonte || r.origem || "Fonte"} ${r.codigo || ""}`,
+        link: r.link || "",
+      };
+    }
+
+    function fontesSelecionadas() {
+      return Object.entries(fontesAtivas)
+        .filter(([, ativo]) => ativo)
+        .map(([fonte]) => fonte);
+    }
+
+    function criarItemPesquisaPorTermo(termo, tipo) {
+      return {
+        tipo: "fontes-termo",
+        codigo: termo,
+        descricao: termo,
+        pdm: termo,
+        unidade: "",
+        origemTipo: tipo,
+        pesquisaPorTermo: true,
+      };
+    }
+
+    async function buscarItens() {
+      if (buscaEmAndamento) return;
+
+      const termo = document.getElementById("termo").value.trim();
+      const tipo = document.getElementById("tipo").value;
+      const status = document.getElementById("statusBusca");
+      const lista = document.getElementById("listaItens");
+      const buscarBtn = document.getElementById("buscarBtn");
+      const token = ++buscaCatalogoToken;
+
+      if (!termo) {
+        alert("Digite uma descrição para buscar.");
+        return;
+      }
+
+      if (!fontesSelecionadas().length) {
+        alert("Selecione pelo menos uma fonte de pesquisa.");
+        return;
+      }
+
+      if (!fontesAtivas.pncp) {
+        lista.innerHTML = "";
+        document.getElementById("cardItens").classList.add("hidden");
+        document.getElementById("cardPrecos").classList.add("hidden");
+        setStatus(status, "PNCP desligado. Vou pesquisar direto nas fontes selecionadas usando a descrição informada.", "info");
+        await consultarPrecos(criarItemPesquisaPorTermo(termo, tipo), buscarBtn, {
+          textoNormal: "Buscar",
+          textoCarregando: "Consultando",
+        });
+        return;
+      }
+
+      buscaEmAndamento = true;
+      setButtonLoading(buscarBtn, true, "Buscando", "Buscar");
+      setStatus(status, "Buscando no catálogo PNCP/Compras.gov. A seleção do item é necessária para pesquisar preços do PNCP.", "info");
+      lista.innerHTML = "";
+      document.getElementById("cardItens").classList.add("hidden");
+      document.getElementById("cardPrecos").classList.add("hidden");
+
+      try {
+        const limiteItens = document.getElementById("limiteItens").value;
+        const resposta = await fetchComTimeout(`/api/buscar-itens?q=${encodeURIComponent(termo)}&tipo=${tipo}&rapido=nao&limiteItens=${limiteItens}`, {}, 180000);
+        const dados = await resposta.json();
+
+        if (!resposta.ok) throw new Error(`${dados.erro || "Erro na busca"}\n${dados.detalhe || ""}`);
+        if (!dados.itens.length) {
+          setStatus(
+            status,
+            "Nenhum item encontrado no catálogo PNCP/Compras.gov. Tente uma descrição mais específica ou desligue o PNCP para pesquisar direto nas outras fontes.",
+            "alerta"
+          );
+          return;
+        }
+
+        setStatus(
+          status,
+          dados.aviso
+            ? `${dados.total} opção(ões) pronta(s).\n${dados.aviso}`
+            : `${dados.total} item(ns) de catálogo encontrado(s). Escolha o item correto para consultar preços do PNCP e das demais fontes ativas.`,
+          dados.aviso ? "info" : "ok"
+        );
+
+        renderizarItensEncontrados(dados, lista);
+
+        if (apenasPncpDireto(dados.itens || [])) {
+          continuarBuscaCatalogo(termo, tipo, status, lista, dados.itens[0], token);
+        }
+      } catch (error) {
+        setStatus(status, "Erro:\n" + error.message, "alerta");
+      } finally {
+        buscaEmAndamento = false;
+        setButtonLoading(buscarBtn, false, "Buscando", "Buscar");
+      }
+    }
+
+    async function continuarBuscaCatalogo(termo, tipo, status, lista, itemPncpDireto, token) {
+      const tentativas = 3;
+      const limiteItens = document.getElementById("limiteItens").value;
+
+      for (let tentativa = 1; tentativa <= tentativas; tentativa++) {
+        if (token !== buscaCatalogoToken) return;
+
+        setStatus(
+          status,
+          `PNCP direto disponível como último recurso.\nContinuo tentando localizar itens de catálogo pela API... tentativa ${tentativa}/${tentativas}.`,
+          "info"
+        );
+
+        try {
+          const resposta = await fetchComTimeout(
+            `/api/buscar-itens?q=${encodeURIComponent(termo)}&tipo=${tipo}&rapido=nao&pncpDireto=nao&limiteItens=${limiteItens}`,
+            {},
+            90000
+          );
+          const dados = await resposta.json();
+
+          if (token !== buscaCatalogoToken) return;
+
+          const itensCatalogo = (dados.itens || []).filter((item) => !item.diretoPncp);
+          if (resposta.ok && itensCatalogo.length) {
+            const itens = [...itensCatalogo, itemPncpDireto];
+            renderizarItensEncontrados({ ...dados, itens }, lista);
+            setStatus(
+              status,
+              `${itensCatalogo.length} item(ns) do catálogo encontrado(s). O PNCP direto ficou por último como alternativa.`,
+              "ok"
+            );
+            return;
+          }
+        } catch (error) {
+          if (token !== buscaCatalogoToken) return;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+      }
+
+      if (token === buscaCatalogoToken) {
+        setStatus(
+          status,
+          "O catálogo ainda não trouxe itens. O PNCP direto continua disponível como último recurso.",
+          "info"
+        );
+      }
+    }
+
+    function alternarBotoesConsulta(disabled) {
+      document.querySelectorAll("#listaItens button").forEach((button) => {
+        button.disabled = disabled;
+      });
+    }
+
+    function renderLoadingPrecos(item) {
+      const fontes = fontesSelecionadas();
+      const fonte = fontes.length ? fontes.map((f) => f.toUpperCase()).join(", ") : "fontes selecionadas";
+      const caminho = item.pesquisaPorTermo
+        ? "Busca direta por descrição nas fontes selecionadas"
+        : item.diretoPncp
+        ? "Busca direta por termo no PNCP"
+        : "Busca por item do catálogo e validação no PNCP";
+
+      document.getElementById("tabelaPrecos").innerHTML = `
+        <div class="loading-card">
+          <div class="loading-title">
+            <span class="loading-spinner"></span>
+            Consultando ${escapeHtml(fonte)}
+          </div>
+          <div class="loading-steps">
+            <div class="loading-step">${escapeHtml(caminho)}</div>
+            <div class="loading-step">Filtrando valores zerados e normalizando unidades/preços</div>
+            <div class="loading-step">Separando os resultados por fonte</div>
+          </div>
+          <p class="empty">Algumas APIs públicas oscilam. A tela será atualizada assim que houver resposta válida.</p>
+          <div class="skeleton">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
+      `;
+    }
+
+    async function consultarPrecos(item, botao, opcoes = {}) {
+      if (consultaEmAndamento) return;
+
+      itemAtual = item;
+      registrosAtuais = [];
+      registrosSinapiAtuais = [];
+      registrosFontesAtuais = [];
+      avisoPncpAtual = "";
+      consultaEmAndamento = true;
+      alternarBotoesConsulta(true);
+      const textoNormalBotao = opcoes.textoNormal || (item.diretoPncp ? "PNCP direto" : "Ver preços");
+      const textoCarregandoBotao = opcoes.textoCarregando || "Consultando";
+      setButtonLoading(botao, true, textoCarregandoBotao, textoNormalBotao);
+
+      const cardPrecos = document.getElementById("cardPrecos");
+      cardPrecos.classList.remove("hidden");
+      cardPrecos.querySelector(".kpis").classList.toggle("hidden", !fontesAtivas.pncp);
+
+      document.getElementById("itemSelecionado").innerText = item.pesquisaPorTermo
+        ? `Pesquisa por descrição: ${item.descricao}`
+        : `Item selecionado: ${item.codigo} - ${item.descricao}`;
+      document.getElementById("kpiQtd").innerText = "-";
+      document.getElementById("kpiMenor").innerText = "-";
+      document.getElementById("kpiMaior").innerText = "-";
+      document.getElementById("kpiMedia").innerText = "-";
+      document.getElementById("kpiMediana").innerText = "-";
+      document.getElementById("statusSinapi").innerText = "";
+      renderLoadingPrecos(item);
+
+      const termoSinapi = item.pdm || item.descricao || document.getElementById("termo").value.trim();
+      const fontesAdicionais = Object.entries(fontesAtivas)
+        .filter(([fonte, ativo]) => ativo && fonte !== "sinapi" && fonte !== "pncp")
+        .map(([fonte]) => fonte)
+        .join(",");
+      const params = new URLSearchParams({
+        codigo: item.codigo || termoSinapi,
+        tipo: item.tipo,
+        tamanhoPagina: "150",
+        termo: termoSinapi,
+        sinapiUf: document.getElementById("sinapiUf").value,
+        sinapiDataReferencia: document.getElementById("sinapiData").value,
+        sinapiRegime: document.getElementById("sinapiRegime").value,
+        incluirSinapi: sinapiAtivo ? "1" : "0",
+        incluirPncp: fontesAtivas.pncp ? "1" : "0",
+        fontesAdicionais,
+        periodoMeses: document.getElementById("periodoMeses").value,
+      });
+
+      try {
+        const resposta = await fetchComTimeout(`/api/precos?${params.toString()}`, {}, 150000);
+        const dados = await resposta.json();
+
+        if (!resposta.ok) throw new Error(`${dados.erro || "Erro na consulta"}\n${dados.detalhe || ""}`);
+
+        registrosAtuais = (dados.registros || []).map(normalizarRegistroPncp);
+        registrosSinapiAtuais = (dados.sinapi?.registros || []).map(normalizarRegistroSinapi);
+        registrosFontesAtuais = (dados.fontes || []).flatMap((fonte) =>
+          (fonte.registros || []).map((registro) => normalizarRegistroFonte(registro, fonte.nome))
+        );
+        avisoPncpAtual = dados.erroPncp || "";
+        const avisosFontes = (dados.fontes || [])
+          .filter((fonte) => fonte.erro && !(fonte.registros || []).length)
+          .map((fonte) => `${fonte.nome}: ${fonte.erro}${fonte.link ? ` (${fonte.link})` : ""}`);
+        if (avisosFontes.length) {
+          avisoPncpAtual = `${avisoPncpAtual ? `${avisoPncpAtual}\n` : ""}${avisosFontes.join("\n")}`;
+        }
+        if (dados.cache) {
+          const atualizado = dados.cacheAtualizadoEm
+            ? new Date(dados.cacheAtualizadoEm).toLocaleString("pt-BR")
+            : "";
+          avisoPncpAtual = `${avisoPncpAtual ? `${avisoPncpAtual}\n` : ""}Resultado exibido a partir do cache local${atualizado ? ` atualizado em ${atualizado}` : ""}.`;
+        }
+
+        document.getElementById("kpiQtd").innerText = dados.estatisticas.quantidade;
+        document.getElementById("kpiMenor").innerText = moeda(dados.estatisticas.menor);
+        document.getElementById("kpiMaior").innerText = moeda(dados.estatisticas.maior);
+        document.getElementById("kpiMedia").innerText = moeda(dados.estatisticas.media);
+        document.getElementById("kpiMediana").innerText = moeda(dados.estatisticas.mediana);
+
+        if (dados.sinapi?.desativado) {
+          document.getElementById("statusSinapi").innerText = "";
+        } else if (!dados.sinapi?.configurado) {
+          document.getElementById("statusSinapi").innerText = "SINAPI não configurado. Defina SINAPI_API_URL e SINAPI_API_KEY para consultar.";
+        } else if (dados.sinapi.erro) {
+          document.getElementById("statusSinapi").innerText = `SINAPI indisponível: ${dados.sinapi.erro}`;
+        } else if (!registrosSinapiAtuais.length) {
+          document.getElementById("statusSinapi").innerText =
+            "SINAPI conectado, mas sem dados locais para esta data. Carregue o ZIP XLSX do SINAPI para popular o banco.";
+        } else {
+          document.getElementById("statusSinapi").innerText = `${registrosSinapiAtuais.length} resultado(s) SINAPI.`;
+        }
+
+        montarResultados();
+      } catch (error) {
+        document.getElementById("tabelaPrecos").innerHTML = `
+          <p class="status alerta">Erro na consulta:\n${escapeHtml(error.message)}</p>
+          <p class="empty">Você pode tentar novamente, usar um termo mais específico ou alterar as fontes selecionadas.</p>
+        `;
+      } finally {
+        consultaEmAndamento = false;
+        alternarBotoesConsulta(false);
+        setButtonLoading(botao, false, textoCarregandoBotao, textoNormalBotao);
+      }
+    }
+
+    function montarCardResultado(registro) {
+      const id = idRegistro(registro);
+      const jaSelecionado = carrinho.some((item) => idRegistro(item) === id);
+      const fonteClasse = classeFonte(registro.origem);
+
+      return `
+        <div class="resultado ${fonteClasse}">
+          <div class="resultado-topo">
+            <div>
+              <span class="badge fonte-badge">${escapeHtml(registro.origem)}${registro.tipoSinapi ? ` - ${escapeHtml(registro.tipoSinapi)}` : ""}</span>
+              <h4>${escapeHtml(textoCurto(registro.descricao, 220))}</h4>
+              <span class="detalhe">${escapeHtml(registro.licitacao || registro.referencia || "-")}</span>
+            </div>
+            <div class="resultado-acoes">
+              <div class="preco">${moeda(registro.precoUnitario)}</div>
+              <button type="button" class="${jaSelecionado ? "success" : ""}" onclick="selecionarPreco('${escapeHtml(id)}')">
+                ${jaSelecionado ? "Selecionado" : "Adicionar à seleção"}
+              </button>
+            </div>
+          </div>
+
+          <div class="meta-grid">
+            <div class="meta"><span>Código</span><strong>${escapeHtml(registro.codigo || "-")}</strong></div>
+            <div class="meta"><span>Item na licitação</span><strong>${escapeHtml(registro.numeroItem ? `Item nº ${registro.numeroItem}` : "-")}</strong></div>
+            <div class="meta"><span>Data/ref.</span><strong>${escapeHtml(registro.data || "-")}</strong></div>
+            <div class="meta"><span>Unidade</span><strong>${escapeHtml(registro.unidade || "-")}</strong></div>
+            <div class="meta"><span>Qtd.</span><strong>${escapeHtml(registro.quantidade || "-")}</strong></div>
+            <div class="meta"><span>Fornecedor</span><strong>${escapeHtml(registro.fornecedor || "-")}</strong></div>
+            <div class="meta"><span>Órgão/ref.</span><strong>${escapeHtml(registro.orgao || "-")}</strong></div>
+            <div class="meta"><span>Referência</span><strong>${escapeHtml(registro.referencia || "-")}</strong></div>
+            <div class="meta"><span>Valor unitário</span><strong>${moeda(registro.precoUnitario)}</strong></div>
+          </div>
+
+          ${registro.link ? `<div class="links"><a href="${escapeHtml(registro.link)}" target="_blank" rel="noopener">${registro.origem === "PNCP" ? "Abrir licitação no PNCP" : "Abrir fonte oficial"}</a></div>` : ""}
+        </div>
+      `;
+    }
+
+    function montarResultados() {
+      const pncp = registrosAtuais;
+      const sinapi = registrosSinapiAtuais;
+      const adicionais = registrosFontesAtuais;
+      const avisoPncp = avisoPncpAtual
+        ? `<p class="status alerta">Avisos da consulta:\n${escapeHtml(avisoPncpAtual)}</p>`
+        : "";
+
+      if (!pncp.length && !sinapi.length && !adicionais.length) {
+        document.getElementById("tabelaPrecos").innerHTML = `${avisoPncp}<p class='status'>Nenhum preço encontrado nas fontes selecionadas.</p>`;
+        return;
+      }
+
+      const blocoSinapi = sinapiAtivo ? `
+        <div class="fonte-bloco fonte-sinapi">
+          <div class="fonte-titulo">
+            <h3>SINAPI</h3>
+            <span class="badge fonte-badge">${sinapi.length} registro(s)</span>
+          </div>
+          <div class="resultado-lista">
+            ${sinapi.length ? sinapi.slice(0, 100).map(montarCardResultado).join("") : "<p class='empty'>Nenhum registro SINAPI disponível para os filtros atuais.</p>"}
+          </div>
+        </div>
+      ` : "";
+      const gruposAdicionais = adicionais.reduce((acc, registro) => {
+        acc[registro.origem] = acc[registro.origem] || [];
+        acc[registro.origem].push(registro);
+        return acc;
+      }, {});
+
+      const blocosAdicionais = Object.entries(gruposAdicionais).map(([origem, registros]) => `
+        <div class="fonte-bloco ${classeFonte(origem)}">
+          <div class="fonte-titulo">
+            <h3>${escapeHtml(origem)}</h3>
+            <span class="badge fonte-badge">${registros.length} registro(s)</span>
+          </div>
+          <div class="resultado-lista">
+            ${registros.slice(0, 100).map(montarCardResultado).join("")}
+          </div>
+        </div>
+      `).join("");
+
+      document.getElementById("tabelaPrecos").innerHTML = `
+        ${avisoPncp}
+        ${fontesAtivas.pncp ? `<div class="fonte-bloco fonte-pncp">
+          <div class="fonte-titulo">
+            <h3>PNCP</h3>
+            <span class="badge fonte-badge">${pncp.length} registro(s)</span>
+          </div>
+          <div class="resultado-lista">
+            ${pncp.length ? pncp.slice(0, 100).map(montarCardResultado).join("") : "<p class='empty'>Nenhum registro PNCP válido.</p>"}
+          </div>
+        </div>` : ""}
+
+        ${blocoSinapi}
+        ${blocosAdicionais}
+      `;
+    }
+
+    function selecionarPreco(id) {
+      const todos = [...registrosAtuais, ...registrosSinapiAtuais, ...registrosFontesAtuais];
+      const registro = todos.find((item) => idRegistro(item) === id);
+      if (!registro) return;
+
+      const existe = carrinho.some((item) => idRegistro(item) === id);
+      if (existe) {
+        carrinho = carrinho.filter((item) => idRegistro(item) !== id);
+      } else {
+        carrinho.push(registro);
+      }
+
+      montarCarrinho();
+      montarResultados();
+    }
+
+    function removerCarrinho(id) {
+      carrinho = carrinho.filter((item) => idRegistro(item) !== id);
+      montarCarrinho();
+      montarResultados();
+    }
+
+    function limparCarrinho() {
+      carrinho = [];
+      montarCarrinho();
+      montarResultados();
+    }
+
+    function montarCarrinho() {
+      const div = document.getElementById("carrinho");
+      if (!carrinho.length) {
+        div.innerHTML = "<p class='empty'>Nenhum preço selecionado ainda.</p>";
+        return;
+      }
+
+      div.innerHTML = carrinho.map((item) => {
+        const id = idRegistro(item);
+        const fonteClasse = classeFonte(item.origem);
+        return `
+          <div class="carrinho-item ${fonteClasse}">
+            <div>
+              <div class="carrinho-titulo">
+                <span class="badge fonte-badge">${escapeHtml(item.origem)}</span>
+                <span class="badge">${escapeHtml(item.codigo ? `Código ${item.codigo}` : "Sem código")}</span>
+              </div>
+              <div class="carrinho-descricao">${escapeHtml(textoCurto(item.descricao || "Item sem descrição", 160))}</div>
+              <div class="carrinho-meta">
+                <span><strong>Data:</strong> ${escapeHtml(item.data || "-")}</span>
+                <span><strong>Item PNCP:</strong> ${escapeHtml(item.numeroItem ? `Item nº ${item.numeroItem}` : "-")}</span>
+                <span><strong>Unid.:</strong> ${escapeHtml(item.unidade || "-")}</span>
+                <span><strong>Qtd.:</strong> ${escapeHtml(item.quantidade || "-")}</span>
+                <span><strong>Licitação:</strong> ${escapeHtml(item.licitacao || item.referencia || "-")}</span>
+                <span><strong>Órgão:</strong> ${escapeHtml(textoCurto(item.orgao || "-", 80))}</span>
+                <span><strong>Fornecedor:</strong> ${escapeHtml(textoCurto(item.fornecedor || "-", 80))}</span>
+              </div>
+            </div>
+            <strong>${moeda(item.precoUnitario)}</strong>
+            <button class="danger compact" onclick="removerCarrinho('${escapeHtml(id)}')">Remover</button>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function gerarRelatorioPdf(botao) {
+      if (!carrinho.length) {
+        alert("Selecione ao menos um preço.");
+        return;
+      }
+
+      setButtonLoading(botao, true, "Gerando PDF", "Gerar relatório PDF");
+
+      try {
+        const resposta = await fetch("/api/relatorio-pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ selecionados: carrinho }),
+        });
+
+        if (!resposta.ok) {
+          const erro = await resposta.json().catch(() => ({}));
+          alert(erro.erro || "Erro ao gerar PDF.");
+          return;
+        }
+
+        const blob = await resposta.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `relatorio-pesquisa-precos-${new Date().toISOString().slice(0, 10)}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } finally {
+        setButtonLoading(botao, false, "Gerando PDF", "Gerar relatório PDF");
+      }
+    }
+
+    function baixarCSV() {
+      const linhas = [...registrosAtuais, ...registrosSinapiAtuais, ...registrosFontesAtuais];
+      if (!linhas.length) {
+        alert("Nenhum registro para exportar.");
+        return;
+      }
+
+      const colunas = ["origem", "codigo", "descricao", "unidade", "quantidade", "precoUnitario", "fornecedor", "orgao", "data", "licitacao", "referencia", "link"];
+      const csv = [
+        colunas.join(";"),
+        ...linhas.map((r) => colunas.map((c) => `"${String(r[c] ?? "").replace(/"/g, '""')}"`).join(";"))
+      ].join("\n");
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `pesquisa-precos-${itemAtual?.codigo || "multiplas-fontes"}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    document.querySelectorAll(".fonte-toggle").forEach((elemento) => {
+      elemento.addEventListener("click", () => alternarFonte(elemento.dataset.fonte, elemento));
+      elemento.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          alternarFonte(elemento.dataset.fonte, elemento);
+        }
+      });
+    });
+
+    setMesPadrao();
+  </script>
+</body>
+</html>
