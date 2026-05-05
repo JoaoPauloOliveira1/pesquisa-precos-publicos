@@ -371,6 +371,21 @@
       font-size: 12px;
     }
 
+    button.subtle {
+      background: rgba(255,255,255,0.88);
+      color: var(--muted);
+      border: 1px solid var(--line);
+      min-height: 32px;
+      padding: 6px 9px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    button.subtle:hover {
+      background: #ffffff;
+      color: var(--emlurb-blue-dark);
+    }
+
     .btn-loading::before {
       content: "";
       width: 13px;
@@ -674,6 +689,11 @@
       display: grid;
       gap: 8px;
       align-items: start;
+    }
+
+    .resultado-acoes .acao-dupla {
+      display: grid;
+      gap: 6px;
     }
 
     .resultado h4 {
@@ -1170,6 +1190,23 @@
       return numero.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     }
 
+    function dataBr(valor) {
+      const texto = String(valor || "").trim();
+      if (!texto) return "-";
+
+      if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) {
+        const [ano, mes, dia] = texto.split("-");
+        return `${dia}/${mes}/${ano}`;
+      }
+
+      const data = new Date(texto);
+      if (!Number.isNaN(data.getTime())) {
+        return data.toLocaleDateString("pt-BR");
+      }
+
+      return texto;
+    }
+
     function classeFonte(origem) {
       const texto = String(origem || "").toLowerCase();
       if (texto.includes("pncp")) return "fonte-pncp";
@@ -1203,6 +1240,38 @@
     function setEstadoFonte(fonte, status, mensagem = "") {
       estadoFontesConsulta[fonte] = { status, mensagem };
       montarResultados();
+    }
+
+    async function copiarRegistro(id) {
+      const todos = [...registrosAtuais, ...registrosSinapiAtuais, ...registrosFontesAtuais, ...carrinho];
+      const registro = todos.find((item) => idRegistro(item) === id);
+      if (!registro) return;
+
+      const texto = [
+        `Origem: ${registro.origem || "-"}`,
+        `Codigo: ${registro.codigo || "-"}`,
+        `Descricao: ${registro.descricao || "-"}`,
+        `Unidade: ${registro.unidade || "-"}`,
+        `Quantidade: ${registro.quantidade || "-"}`,
+        `Preco unitario: ${moeda(registro.precoUnitario)}`,
+        `Data: ${dataBr(registro.data)}`,
+        `Licitacao: ${registro.licitacao || "-"}`,
+        `Referencia: ${registro.referencia || "-"}`,
+        `Orgao: ${registro.orgao || "-"}`,
+        `Fornecedor: ${registro.fornecedor || "-"}`,
+        `Link: ${registro.link || "-"}`,
+      ].join("\t");
+
+      try {
+        await navigator.clipboard.writeText(texto);
+      } catch (error) {
+        const area = document.createElement("textarea");
+        area.value = texto;
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        area.remove();
+      }
     }
 
     function textoCurto(texto, limite = 180) {
@@ -1781,16 +1850,19 @@
             </div>
             <div class="resultado-acoes">
               <div class="preco">${moeda(registro.precoUnitario)}</div>
-              <button type="button" class="${jaSelecionado ? "success" : ""}" onclick="selecionarPreco('${escapeHtml(id)}')">
-                ${jaSelecionado ? "Selecionado" : "Adicionar à seleção"}
-              </button>
+              <div class="acao-dupla">
+                <button type="button" class="${jaSelecionado ? "success" : ""}" onclick="selecionarPreco('${escapeHtml(id)}')">
+                  ${jaSelecionado ? "Selecionado" : "Adicionar à seleção"}
+                </button>
+                <button type="button" class="subtle" onclick="copiarRegistro('${escapeHtml(id)}')">Copiar</button>
+              </div>
             </div>
           </div>
 
           <div class="meta-grid">
             <div class="meta"><span>Código</span><strong>${escapeHtml(registro.codigo || "-")}</strong></div>
             <div class="meta"><span>Item na licitação</span><strong>${escapeHtml(registro.numeroItem ? `Item nº ${registro.numeroItem}` : "-")}</strong></div>
-            <div class="meta"><span>Data/ref.</span><strong>${escapeHtml(registro.data || "-")}</strong></div>
+            <div class="meta"><span>Data/ref.</span><strong>${escapeHtml(dataBr(registro.data))}</strong></div>
             <div class="meta"><span>Unidade</span><strong>${escapeHtml(registro.unidade || "-")}</strong></div>
             <div class="meta"><span>Qtd.</span><strong>${escapeHtml(registro.quantidade || "-")}</strong></div>
             <div class="meta"><span>Fornecedor</span><strong>${escapeHtml(registro.fornecedor || "-")}</strong></div>
@@ -1933,10 +2005,11 @@
               <div class="carrinho-titulo">
                 <span class="badge fonte-badge">${escapeHtml(item.origem)}</span>
                 <span class="badge">${escapeHtml(item.codigo ? `Código ${item.codigo}` : "Sem código")}</span>
+                <button class="subtle compact" onclick="copiarRegistro('${escapeHtml(id)}')">Copiar</button>
               </div>
               <div class="carrinho-descricao">${escapeHtml(textoCurto(item.descricao || "Item sem descrição", 160))}</div>
               <div class="carrinho-meta">
-                <span><strong>Data:</strong> ${escapeHtml(item.data || "-")}</span>
+                <span><strong>Data:</strong> ${escapeHtml(dataBr(item.data))}</span>
                 <span><strong>Item PNCP:</strong> ${escapeHtml(item.numeroItem ? `Item nº ${item.numeroItem}` : "-")}</span>
                 <span><strong>Unid.:</strong> ${escapeHtml(item.unidade || "-")}</span>
                 <span><strong>Qtd.:</strong> ${escapeHtml(item.quantidade || "-")}</span>
