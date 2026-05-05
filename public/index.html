@@ -737,6 +737,32 @@
       overflow-wrap: anywhere;
     }
 
+    .meta-copy {
+      display: block;
+      width: 100%;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      margin: 0;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 700;
+      color: inherit;
+      overflow-wrap: anywhere;
+      cursor: pointer;
+      transition: color 0.15s ease;
+    }
+
+    .meta-copy:hover,
+    .meta-copy:focus-visible {
+      color: var(--emlurb-blue);
+      outline: none;
+    }
+
+    .meta-copy.copiado {
+      color: var(--emlurb-green-dark);
+    }
+
     .links {
       display: flex;
       gap: 10px;
@@ -1272,6 +1298,48 @@
         document.execCommand("copy");
         area.remove();
       }
+    }
+
+    async function copiarTextoValor(texto, event) {
+      const valor = String(texto || "").trim();
+      if (!valor || valor === "-") return;
+
+      try {
+        await navigator.clipboard.writeText(valor);
+      } catch (error) {
+        const area = document.createElement("textarea");
+        area.value = valor;
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        area.remove();
+      }
+
+      const botao = event?.currentTarget;
+      if (botao) {
+        const tituloOriginal = botao.title;
+        botao.classList.add("copiado");
+        botao.title = "Copiado";
+        setTimeout(() => {
+          botao.classList.remove("copiado");
+          botao.title = tituloOriginal || "Clique para copiar";
+        }, 900);
+      }
+    }
+
+    function renderMetaCopiavel(rotulo, valorExibido, valorCopia = valorExibido) {
+      const exibicao = valorExibido == null || valorExibido === "" ? "-" : String(valorExibido);
+      const copia = valorCopia == null || valorCopia === "" ? "-" : String(valorCopia);
+      const copiavel = copia.trim() && copia.trim() !== "-";
+
+      return `
+        <div class="meta">
+          <span>${escapeHtml(rotulo)}</span>
+          ${copiavel
+            ? `<button type="button" class="meta-copy" title="Clique para copiar" onclick="copiarTextoValor('${escapeHtml(copia).replace(/'/g, "&#39;")}', event)">${escapeHtml(exibicao)}</button>`
+            : `<strong>${escapeHtml(exibicao)}</strong>`}
+        </div>
+      `;
     }
 
     function textoCurto(texto, limite = 180) {
@@ -1860,15 +1928,15 @@
           </div>
 
           <div class="meta-grid">
-            <div class="meta"><span>Código</span><strong>${escapeHtml(registro.codigo || "-")}</strong></div>
-            <div class="meta"><span>Item na licitação</span><strong>${escapeHtml(registro.numeroItem ? `Item nº ${registro.numeroItem}` : "-")}</strong></div>
-            <div class="meta"><span>Data/ref.</span><strong>${escapeHtml(dataBr(registro.data))}</strong></div>
-            <div class="meta"><span>Unidade</span><strong>${escapeHtml(registro.unidade || "-")}</strong></div>
-            <div class="meta"><span>Qtd.</span><strong>${escapeHtml(registro.quantidade || "-")}</strong></div>
-            <div class="meta"><span>Fornecedor</span><strong>${escapeHtml(registro.fornecedor || "-")}</strong></div>
-            <div class="meta"><span>Órgão/ref.</span><strong>${escapeHtml(registro.orgao || "-")}</strong></div>
-            <div class="meta"><span>Referência</span><strong>${escapeHtml(registro.referencia || "-")}</strong></div>
-            <div class="meta"><span>Valor unitário</span><strong>${moeda(registro.precoUnitario)}</strong></div>
+            ${renderMetaCopiavel("Código", registro.codigo || "-")}
+            ${renderMetaCopiavel("Item na licitação", registro.numeroItem ? `Item nº ${registro.numeroItem}` : "-", registro.numeroItem || "-")}
+            ${renderMetaCopiavel("Data/ref.", dataBr(registro.data), dataBr(registro.data))}
+            ${renderMetaCopiavel("Unidade", registro.unidade || "-")}
+            ${renderMetaCopiavel("Qtd.", registro.quantidade || "-")}
+            ${renderMetaCopiavel("Fornecedor", registro.fornecedor || "-")}
+            ${renderMetaCopiavel("Órgão/ref.", registro.orgao || "-")}
+            ${renderMetaCopiavel("Referência", registro.referencia || "-")}
+            ${renderMetaCopiavel("Valor unitário", moeda(registro.precoUnitario), moeda(registro.precoUnitario))}
           </div>
 
           ${registro.link ? `<div class="links"><a href="${escapeHtml(registro.link)}" target="_blank" rel="noopener">${registro.origem === "PNCP" ? "Abrir licitação no PNCP" : "Abrir fonte oficial"}</a></div>` : ""}
