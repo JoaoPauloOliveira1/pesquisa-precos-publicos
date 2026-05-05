@@ -50,6 +50,7 @@ const SICRO_JSON_PATH = path.join(BASES_DIR, "sicro.json");
 const SICRO_MANIFEST_PATH = path.join(SICRO_DOWNLOAD_DIR, "manifest.json");
 const ORSE_DOWNLOAD_DIR = path.join(BASES_DIR, "orse-downloads");
 const ORSE_EXTRACT_DIR = path.join(BASES_DIR, "orse-extraidos");
+const ORSE_LITE_JSON_PATH = path.join(BASES_DIR, "orse-lite.json");
 const ORSE_JSON_PATH = path.join(BASES_DIR, "orse.json");
 const ORSE_MANIFEST_PATH = path.join(ORSE_DOWNLOAD_DIR, "manifest.json");
 const CACHE_PATH = path.join(DATA_DIR, "cache-consultas.json");
@@ -197,7 +198,7 @@ const FONTES_LOCAIS = {
   },
   orse: {
     nome: "ORSE-SE",
-    arquivos: ["orse.json", "orse.csv"],
+    arquivos: ["orse-lite.json", "orse-lite.csv", "orse.json", "orse.csv"],
     origem: "ORSE-SE",
   },
 };
@@ -657,6 +658,50 @@ function compactarRegistrosSicro(registros, uf = "") {
       arquivo: item.arquivo || "",
       planilha: item.planilha || "",
       estado: item.estado || "",
+    };
+
+    const chave = [
+      registro.uf,
+      registro.dataReferencia,
+      registro.codigo,
+      normalizarTexto(registro.descricao),
+      registro.precoUnitario,
+    ].join("|");
+
+    if (!mapa.has(chave)) {
+      mapa.set(chave, registro);
+    }
+  }
+
+  return Array.from(mapa.values()).sort((a, b) => {
+    const data = String(b.dataReferencia || "").localeCompare(String(a.dataReferencia || ""));
+    if (data !== 0) return data;
+    return String(a.codigo || "").localeCompare(String(b.codigo || ""));
+  });
+}
+
+function compactarRegistrosOrse(registros) {
+  const mapa = new Map();
+
+  for (const item of Array.isArray(registros) ? registros : []) {
+    const precoUnitario = normalizarValor(item.precoUnitario);
+    if (!item.codigo || !item.descricao || Number.isNaN(precoUnitario) || precoUnitario <= 0) continue;
+
+    const registro = {
+      origem: "ORSE-SE",
+      tipoSinapi: item.tipoSinapi || item.tipo || "",
+      codigo: item.codigo,
+      descricao: item.descricao,
+      unidade: item.unidade || "",
+      precoUnitario,
+      dataReferencia: item.dataReferencia || "",
+      uf: String(item.uf || "SE").trim().toUpperCase() || "SE",
+      referencia: item.referencia || `ORSE ${item.codigo}`,
+      link: item.link || ORSE_INSUMOS_URL,
+      periodo: item.periodo || "",
+      arquivo: item.arquivo || "",
+      planilha: item.planilha || "",
+      estado: item.estado || "SERGIPE",
     };
 
     const chave = [
@@ -2148,7 +2193,7 @@ function totalPaginasOrse(html) {
   return match ? Number(match[1]) || 1 : 1;
 }
 
-async function consultarOrseInsumosOnline({ termo, limite = 100 }) {
+async function consultarOrseInsumosOnline({ termo, limite = 100, maxPaginas = 12 }) {
   const cookieFile = criarArquivoTemporario("orse-cookie");
 
   try {
@@ -2166,7 +2211,11 @@ async function consultarOrseInsumosOnline({ termo, limite = 100 }) {
     const primeiraPagina = await consultarOrseAsp({ pagina: 1, body, cookieFile });
     registros.push(...extrairRegistrosOrseInsumos(primeiraPagina, { termo, periodo }));
 
-    const paginas = Math.min(totalPaginasOrse(primeiraPagina), Math.ceil(limite / 12) + 1, 12);
+    const paginas = Math.min(
+      totalPaginasOrse(primeiraPagina),
+      Math.max(1, Math.ceil(limite / 12) + 1),
+      Math.max(1, maxPaginas || 12)
+    );
     for (let pagina = 2; pagina <= paginas && registros.length < limite; pagina++) {
       const html = await consultarOrseAsp({ pagina, body, cookieFile });
       const itens = extrairRegistrosOrseInsumos(html, { termo, periodo });
@@ -3702,6 +3751,60 @@ app.get("/api/sicro/gerar-lite", (req, res) => {
   });
 });
 
+app.get("/api/orse/gerar-lite", (req, res) => {
+  if (!fs.existsSync(ORSE_JSON_PATH)) {
+    return res.status(404).json({
+      erro: "Base ORSE principal não encontrada. Gere primeiro o orse.json localmente.",
+    });
+  }
+
+  const bruto = JSON.parse(fs.readFileSync(ORSE_JSON_PATH, "utf8"));
+  const registros = compactarRegistrosOrse(bruto);
+
+  fs.mkdirSync(BASES_DIR, { recursive: true });
+  fs.writeFileSync(ORSE_LITE_JSON_PATH, JSON.stringify(registros, null, 2));
+
+  res.json({
+    ok: true,
+    arquivo: ORSE_LITE_JSON_PATH,
+    totalRegistros: registros.length,
+    uf: "SE",
+    tamanho: fs.statSync(ORSE_LITE_JSON_PATH).size,
+  });
+});
+
+app.get("/api/orse/gerar-lite-online", async (req, res) => {
+  const limite = Math.max(200, Math.min(Number(req.query.limite) || 5000, 20000));
+  const maxPaginas = Math.max(20, Math.min(Number(req.query.maxPaginas) || 180, 400));
+
+  try {
+    const online = await consultarOrseInsumosOnline({
+      termo: "",
+      limite,
+      maxPaginas,
+    });
+
+    const registros = compactarRegistrosOrse(online.registros || []);
+    fs.mkdirSync(BASES_DIR, { recursive: true });
+    fs.writeFileSync(ORSE_LITE_JSON_PATH, JSON.stringify(registros, null, 2));
+
+    return res.json({
+      ok: true,
+      origem: "online",
+      arquivo: ORSE_LITE_JSON_PATH,
+      totalRegistros: registros.length,
+      periodo: online.periodo,
+      tamanho: fs.statSync(ORSE_LITE_JSON_PATH).size,
+      limite,
+      maxPaginas,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      erro: `Não foi possível gerar a base leve ORSE online: ${error.message}`,
+    });
+  }
+});
+
 app.get("/api/orse/atualizar", async (req, res) => {
   const forcar = req.query.forcar === "1";
   const aguardar = req.query.aguardar === "1";
@@ -3732,6 +3835,11 @@ app.get("/api/orse/status", (req, res) => {
       existe: fs.existsSync(ORSE_JSON_PATH),
       tamanho: fs.existsSync(ORSE_JSON_PATH) ? fs.statSync(ORSE_JSON_PATH).size : 0,
     },
+    baseLeve: {
+      arquivo: ORSE_LITE_JSON_PATH,
+      existe: fs.existsSync(ORSE_LITE_JSON_PATH),
+      tamanho: fs.existsSync(ORSE_LITE_JSON_PATH) ? fs.statSync(ORSE_LITE_JSON_PATH).size : 0,
+    },
     fonte: ORSE_BASE_DADOS_URL,
   });
 });
@@ -3755,7 +3863,7 @@ app.get("/api/health", (req, res) => {
       pncp: true,
       sinapi: SINAPI_HABILITADO,
       sicro: fs.existsSync(SICRO_LITE_JSON_PATH) || fs.existsSync(SICRO_JSON_PATH),
-      orse: true,
+      orse: fs.existsSync(ORSE_LITE_JSON_PATH) || fs.existsSync(ORSE_JSON_PATH),
       peIntegrado: true,
     },
   });
