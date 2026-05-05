@@ -36,6 +36,7 @@ const SINAPI_API_URL = process.env.SINAPI_API_URL || "";
 const SINAPI_API_KEY = process.env.SINAPI_API_KEY || "";
 const DEBUG_LOGS = process.env.DEBUG_LOGS === "1";
 const IS_RENDER = process.env.RENDER === "true";
+const CURL_BIN = process.platform === "win32" ? "curl.exe" : "curl";
 const AUTO_UPDATE_BASES =
   process.env.AUTO_UPDATE_BASES === "1" ||
   (process.env.AUTO_UPDATE_BASES !== "0" && !IS_RENDER && process.env.NODE_ENV !== "production");
@@ -409,7 +410,7 @@ function executarArquivo(comando, args) {
 }
 
 async function consultarTextoComCurl(url, timeoutSegundos = 60) {
-  const { stdout } = await executarArquivo("curl.exe", [
+  const { stdout } = await executarArquivo(CURL_BIN, [
     "-sS",
     "-L",
     "-A",
@@ -430,7 +431,7 @@ async function consultarTextoComCurl(url, timeoutSegundos = 60) {
 
 async function baixarArquivoComCurl(url, destino, timeoutSegundos = 240) {
   fs.mkdirSync(path.dirname(destino), { recursive: true });
-  await executarArquivo("curl.exe", [
+  await executarArquivo(CURL_BIN, [
     "-sS",
     "--http1.1",
     "-L",
@@ -460,7 +461,7 @@ async function baixarArquivoComCurlResumivel(url, destino, tamanhoEsperado = 0, 
 
   for (let tentativa = 1; tentativa <= tentativas; tentativa++) {
     try {
-      await executarArquivo("curl.exe", [
+      await executarArquivo(CURL_BIN, [
         "-sS",
         "--http1.1",
         "-L",
@@ -495,7 +496,7 @@ async function baixarArquivoComCurlResumivel(url, destino, tamanhoEsperado = 0, 
 }
 
 async function obterCabecalhosHttp(url, timeoutSegundos = 60) {
-  const { stdout } = await executarArquivo("curl.exe", [
+  const { stdout } = await executarArquivo(CURL_BIN, [
     "-sS",
     "-I",
     "-L",
@@ -1993,7 +1994,66 @@ function dataReferenciaPeriodoOrse(periodo) {
   return `${match[1]}-${String(match[2]).padStart(2, "0")}`;
 }
 
-async function consultarOrseAsp({ pagina = 1, body = null, timeoutMs = 90000 } = {}) {
+function criarArquivoTemporario(nome) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  return path.join(DATA_DIR, `${nome}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`);
+}
+
+function excluirArquivoSilenciosamente(caminho) {
+  try {
+    if (caminho && fs.existsSync(caminho)) fs.unlinkSync(caminho);
+  } catch (error) {
+    debugWarn("Não foi possível apagar arquivo temporário:", error.message);
+  }
+}
+
+async function consultarOrseAspComCurl({ pagina = 1, body = null, timeoutSegundos = 90, cookieFile = "" } = {}) {
+  const url = new URL(ORSE_INSUMOS_URL);
+  if (body) url.searchParams.set("tarefa", "consultar");
+  if (pagina > 1) url.searchParams.set("page", String(pagina));
+
+  const args = [
+    "-sS",
+    "--http1.1",
+    "-L",
+    "-A",
+    "Mozilla/5.0",
+    "-e",
+    ORSE_INSUMOS_URL,
+    "-H",
+    "Origin: https://orse.cehop.se.gov.br",
+    "-H",
+    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "--connect-timeout",
+    "20",
+    "--max-time",
+    String(timeoutSegundos),
+  ];
+
+  if (cookieFile) {
+    args.push("-c", cookieFile, "-b", cookieFile);
+  }
+
+  if (body) {
+    args.push(
+      "-H",
+      "Content-Type: application/x-www-form-urlencoded",
+      "--data",
+      body
+    );
+  }
+
+  args.push(url.toString());
+
+  const { stdout } = await executarArquivo(CURL_BIN, args);
+  if (!stdout || !stdout.trim()) {
+    throw new Error("curl não retornou HTML da consulta ORSE.");
+  }
+
+  return stdout;
+}
+
+async function consultarOrseAsp({ pagina = 1, body = null, timeoutMs = 90000, cookieFile = "" } = {}) {
   const url = new URL(ORSE_INSUMOS_URL);
   if (body) url.searchParams.set("tarefa", "consultar");
   if (pagina > 1) url.searchParams.set("page", String(pagina));
@@ -2007,6 +2067,8 @@ async function consultarOrseAsp({ pagina = 1, body = null, timeoutMs = 90000 } =
       headers: {
         accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "content-type": "application/x-www-form-urlencoded",
+        origin: "https://orse.cehop.se.gov.br",
+        referer: ORSE_INSUMOS_URL,
         "user-agent": "Mozilla/5.0",
       },
       body,
@@ -2016,14 +2078,23 @@ async function consultarOrseAsp({ pagina = 1, body = null, timeoutMs = 90000 } =
     const buffer = Buffer.from(await resposta.arrayBuffer());
     const texto = buffer.toString("latin1");
     if (!resposta.ok) throw new Error(`Status ${resposta.status}: ${texto.slice(0, 200)}`);
+    if (!texto.trim()) throw new Error("HTML vazio na consulta ORSE.");
     return texto;
+  } catch (error) {
+    debugWarn("Fetch da consulta ORSE falhou, tentando curl:", error.message);
+    return consultarOrseAspComCurl({
+      pagina,
+      body,
+      timeoutSegundos: Math.max(30, Math.ceil(timeoutMs / 1000)),
+      cookieFile,
+    });
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function obterPeriodoAtualOrseInsumos() {
-  const html = await consultarOrseAsp();
+async function obterPeriodoAtualOrseInsumos(cookieFile = "") {
+  const html = await consultarOrseAsp({ cookieFile });
   const match =
     html.match(/<select[^>]+name="sltPeriodo"[\s\S]*?<option\s+value="([^"]+)"[^>]*selected[^>]*>([^<]+)<\/option>/i) ||
     html.match(/<select[^>]+name="sltPeriodo"[\s\S]*?<option\s+value="([^"]+)"[^>]*>([^<]+)<\/option>/i);
@@ -2078,37 +2149,43 @@ function totalPaginasOrse(html) {
 }
 
 async function consultarOrseInsumosOnline({ termo, limite = 100 }) {
-  const periodo = await obterPeriodoAtualOrseInsumos();
-  const body = new URLSearchParams({
-    sltFOnte: "ORSE",
-    sltPeriodo: periodo.valor,
-    sltGrupoInsumo: "0",
-    rdbCriterio: "2",
-    txtDescricao: termo || "",
-    Submit: "Consultar",
-  }).toString();
+  const cookieFile = criarArquivoTemporario("orse-cookie");
 
-  const registros = [];
-  const primeiraPagina = await consultarOrseAsp({ pagina: 1, body });
-  registros.push(...extrairRegistrosOrseInsumos(primeiraPagina, { termo, periodo }));
+  try {
+    const periodo = await obterPeriodoAtualOrseInsumos(cookieFile);
+    const body = new URLSearchParams({
+      sltFOnte: "ORSE",
+      sltPeriodo: periodo.valor,
+      sltGrupoInsumo: "0",
+      rdbCriterio: "2",
+      txtDescricao: termo || "",
+      Submit: "Consultar",
+    }).toString();
 
-  const paginas = Math.min(totalPaginasOrse(primeiraPagina), Math.ceil(limite / 12) + 1, 12);
-  for (let pagina = 2; pagina <= paginas && registros.length < limite; pagina++) {
-    const html = await consultarOrseAsp({ pagina, body });
-    const itens = extrairRegistrosOrseInsumos(html, { termo, periodo });
-    if (!itens.length) break;
-    registros.push(...itens);
+    const registros = [];
+    const primeiraPagina = await consultarOrseAsp({ pagina: 1, body, cookieFile });
+    registros.push(...extrairRegistrosOrseInsumos(primeiraPagina, { termo, periodo }));
+
+    const paginas = Math.min(totalPaginasOrse(primeiraPagina), Math.ceil(limite / 12) + 1, 12);
+    for (let pagina = 2; pagina <= paginas && registros.length < limite; pagina++) {
+      const html = await consultarOrseAsp({ pagina, body, cookieFile });
+      const itens = extrairRegistrosOrseInsumos(html, { termo, periodo });
+      if (!itens.length) break;
+      registros.push(...itens);
+    }
+
+    const unicos = new Map();
+    for (const registro of registros) {
+      if (!unicos.has(registro.codigo)) unicos.set(registro.codigo, registro);
+    }
+
+    return {
+      periodo,
+      registros: Array.from(unicos.values()).slice(0, limite),
+    };
+  } finally {
+    excluirArquivoSilenciosamente(cookieFile);
   }
-
-  const unicos = new Map();
-  for (const registro of registros) {
-    if (!unicos.has(registro.codigo)) unicos.set(registro.codigo, registro);
-  }
-
-  return {
-    periodo,
-    registros: Array.from(unicos.values()).slice(0, limite),
-  };
 }
 
 async function obterReferenciaOrseSe() {
