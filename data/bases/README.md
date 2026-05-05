@@ -2,7 +2,7 @@
 
 Coloque aqui arquivos locais para ativar fontes referenciais:
 
-- `sicro.csv` ou `sicro.json`
+- `sicro-lite.json`, `sicro-lite.csv`, `sicro.json` ou `sicro.csv`
 - `orse.csv` ou `orse.json`
 
 Para o SICRO, o sistema confere automaticamente a página oficial do DNIT Nordeste e informa qual é a referência mais recente por UF.
@@ -25,6 +25,14 @@ data/bases/sicro.json
 ```
 
 Esse é o arquivo pesquisável usado pelo botão `SICRO`.
+
+Para produção, especialmente no Render, o caminho recomendado é gerar e versionar um arquivo leve:
+
+```text
+data/bases/sicro-lite.json
+```
+
+O sistema prioriza esse arquivo antes do `sicro.json` completo.
 
 Para a ORSE-SE, o sistema confere automaticamente a página oficial de Base de Dados da CEHOP e identifica o arquivo `.ORSE` mais recente:
 
@@ -58,6 +66,7 @@ Também existem endpoints manuais:
 /api/sicro/atualizar
 /api/sicro/importar
 /api/sicro/status
+/api/sicro/gerar-lite
 /api/orse/atualizar
 /api/orse/importar
 /api/orse/status

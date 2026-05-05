@@ -44,6 +44,7 @@ const DATA_DIR = path.join(__dirname, "data");
 const BASES_DIR = path.join(DATA_DIR, "bases");
 const SICRO_DOWNLOAD_DIR = path.join(BASES_DIR, "sicro-downloads");
 const SICRO_EXTRACT_DIR = path.join(BASES_DIR, "sicro-extraidos");
+const SICRO_LITE_JSON_PATH = path.join(BASES_DIR, "sicro-lite.json");
 const SICRO_JSON_PATH = path.join(BASES_DIR, "sicro.json");
 const SICRO_MANIFEST_PATH = path.join(SICRO_DOWNLOAD_DIR, "manifest.json");
 const ORSE_DOWNLOAD_DIR = path.join(BASES_DIR, "orse-downloads");
@@ -190,7 +191,7 @@ const CLASSES_MATERIAL_RELACIONADAS = [
 const FONTES_LOCAIS = {
   sicro: {
     nome: "SICRO",
-    arquivos: ["sicro.json", "sicro.csv"],
+    arquivos: ["sicro-lite.json", "sicro-lite.csv", "sicro.json", "sicro.csv"],
     origem: "SICRO",
   },
   orse: {
@@ -629,6 +630,52 @@ async function importarSicroDownloads() {
     totalRegistros: registros.length,
     resumo,
   };
+}
+
+function compactarRegistrosSicro(registros, uf = "") {
+  const ufFiltro = String(uf || "").trim().toUpperCase();
+  const mapa = new Map();
+
+  for (const item of Array.isArray(registros) ? registros : []) {
+    const ufItem = String(item.uf || "").trim().toUpperCase();
+    if (ufFiltro && ufItem && ufItem !== ufFiltro) continue;
+
+    const precoUnitario = normalizarValor(item.precoUnitario);
+    if (!item.codigo || !item.descricao || Number.isNaN(precoUnitario) || precoUnitario <= 0) continue;
+
+    const registro = {
+      origem: "SICRO",
+      tipoSinapi: item.tipoSinapi || item.tipo || "",
+      codigo: item.codigo,
+      descricao: item.descricao,
+      unidade: item.unidade || "",
+      precoUnitario,
+      dataReferencia: item.dataReferencia || "",
+      uf: ufItem || item.uf || "",
+      referencia: item.referencia || "",
+      arquivo: item.arquivo || "",
+      planilha: item.planilha || "",
+      estado: item.estado || "",
+    };
+
+    const chave = [
+      registro.uf,
+      registro.dataReferencia,
+      registro.codigo,
+      normalizarTexto(registro.descricao),
+      registro.precoUnitario,
+    ].join("|");
+
+    if (!mapa.has(chave)) {
+      mapa.set(chave, registro);
+    }
+  }
+
+  return Array.from(mapa.values()).sort((a, b) => {
+    const data = String(b.dataReferencia || "").localeCompare(String(a.dataReferencia || ""));
+    if (data !== 0) return data;
+    return String(a.codigo || "").localeCompare(String(b.codigo || ""));
+  });
 }
 
 function calcularEstatisticas(lista) {
@@ -3541,6 +3588,11 @@ app.get("/api/sicro/status", (req, res) => {
       existe: fs.existsSync(SICRO_JSON_PATH),
       tamanho: fs.existsSync(SICRO_JSON_PATH) ? fs.statSync(SICRO_JSON_PATH).size : 0,
     },
+    baseLeve: {
+      arquivo: SICRO_LITE_JSON_PATH,
+      existe: fs.existsSync(SICRO_LITE_JSON_PATH),
+      tamanho: fs.existsSync(SICRO_LITE_JSON_PATH) ? fs.statSync(SICRO_LITE_JSON_PATH).size : 0,
+    },
     fonte: DNIT_SICRO_NORDESTE_URL,
   });
 });
@@ -3548,6 +3600,29 @@ app.get("/api/sicro/status", (req, res) => {
 app.get("/api/sicro/importar", async (req, res) => {
   const resultado = await importarSicroDownloads();
   res.json(resultado);
+});
+
+app.get("/api/sicro/gerar-lite", (req, res) => {
+  if (!fs.existsSync(SICRO_JSON_PATH)) {
+    return res.status(404).json({
+      erro: "Base SICRO principal não encontrada. Gere primeiro o sicro.json localmente.",
+    });
+  }
+
+  const uf = String(req.query.uf || "").trim().toUpperCase();
+  const bruto = JSON.parse(fs.readFileSync(SICRO_JSON_PATH, "utf8"));
+  const registros = compactarRegistrosSicro(bruto, uf);
+
+  fs.mkdirSync(BASES_DIR, { recursive: true });
+  fs.writeFileSync(SICRO_LITE_JSON_PATH, JSON.stringify(registros, null, 2));
+
+  res.json({
+    ok: true,
+    arquivo: SICRO_LITE_JSON_PATH,
+    totalRegistros: registros.length,
+    uf: uf || "TODAS",
+    tamanho: fs.statSync(SICRO_LITE_JSON_PATH).size,
+  });
 });
 
 app.get("/api/orse/atualizar", async (req, res) => {
@@ -3602,7 +3677,7 @@ app.get("/api/health", (req, res) => {
     fontes: {
       pncp: true,
       sinapi: SINAPI_HABILITADO,
-      sicro: fs.existsSync(SICRO_JSON_PATH),
+      sicro: fs.existsSync(SICRO_LITE_JSON_PATH) || fs.existsSync(SICRO_JSON_PATH),
       orse: true,
       peIntegrado: true,
     },
