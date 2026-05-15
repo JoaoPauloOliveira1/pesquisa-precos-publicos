@@ -116,22 +116,44 @@
     }
 
     .intro-subtitle {
-      margin: 0;
-      color: rgba(255,255,255,0.86);
-      font-size: 14px;
-      letter-spacing: 0.02em;
+      display: inline-block;
+      margin: 2px 0 0;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.18);
+      color: rgba(255,255,255,0.96);
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      text-transform: uppercase;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.08);
       opacity: 0;
       transform: translateY(8px);
       animation: intro-rise 0.6s ease 0.32s forwards;
+    }
+
+    .intro-credit {
+      margin: 12px 0 0;
+      color: rgba(255,255,255,0.84);
+      font-size: 12px;
+      font-weight: 500;
+      opacity: 0;
+      transform: translateY(8px);
+      animation: intro-rise 0.5s ease 0.52s forwards;
+    }
+
+    .intro-credit strong {
+      color: #fff;
+      font-weight: 800;
     }
 
     .intro-scene {
       position: relative;
       margin-top: 20px;
       height: 64px;
-      opacity: 0;
-      transform: translateY(6px);
-      animation: intro-rise 0.55s ease 0.9s forwards;
+      opacity: 1;
+      transform: none;
     }
 
     .intro-wire {
@@ -153,7 +175,7 @@
       border-radius: 999px;
       background: linear-gradient(90deg, rgba(246,195,67,0), rgba(246,195,67,0.98), rgba(255,244,204,1), rgba(246,195,67,0));
       box-shadow: 0 0 14px rgba(246,195,67,0.76);
-      animation: intro-energy 1.95s ease 0.38s forwards;
+      animation: intro-energy 1.95s ease 0.45s forwards;
     }
 
     .intro-pole {
@@ -193,7 +215,7 @@
       width: 16px;
       height: 9px;
       border-radius: 3px;
-      background: rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.12);
       border: 1px solid rgba(255,255,255,0.34);
       box-shadow: 0 0 0 rgba(246,195,67,0);
       animation: intro-pole-light 0.7s ease 1.85s forwards;
@@ -1261,6 +1283,7 @@
         <h2 class="intro-title">Pesquisa de Preços</h2>
       </div>
       <p class="intro-subtitle">Diretoria Executiva de Iluminação Pública</p>
+      <p class="intro-credit">Desenvolvido por <strong>João Oliveira</strong></p>
       <div class="intro-scene" aria-hidden="true">
         <div class="intro-wire"></div>
         <div class="intro-pole">
