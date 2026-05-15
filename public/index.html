@@ -133,24 +133,9 @@
       animation: intro-rise 0.6s ease 0.32s forwards;
     }
 
-    .intro-credit {
-      margin: 12px 0 0;
-      color: rgba(255,255,255,0.84);
-      font-size: 12px;
-      font-weight: 500;
-      opacity: 0;
-      transform: translateY(8px);
-      animation: intro-rise 0.5s ease 0.52s forwards;
-    }
-
-    .intro-credit strong {
-      color: #fff;
-      font-weight: 800;
-    }
-
     .intro-scene {
       position: relative;
-      margin-top: 20px;
+      margin-top: 26px;
       height: 64px;
       opacity: 1;
       transform: none;
@@ -262,6 +247,21 @@
       letter-spacing: 0.02em;
       opacity: 0;
       animation: intro-hint-show 0.45s ease 2s forwards;
+    }
+
+    .intro-credit {
+      margin: 10px 0 0;
+      color: rgba(255,255,255,0.8);
+      font-size: 11px;
+      text-align: center;
+      font-weight: 500;
+      opacity: 0;
+      animation: intro-hint-show 0.45s ease 2.12s forwards;
+    }
+
+    .intro-credit strong {
+      color: #fff;
+      font-weight: 800;
     }
 
     .app-shell {
@@ -1283,7 +1283,6 @@
         <h2 class="intro-title">Pesquisa de Preços</h2>
       </div>
       <p class="intro-subtitle">Diretoria Executiva de Iluminação Pública</p>
-      <p class="intro-credit">Desenvolvido por <strong>João Oliveira</strong></p>
       <div class="intro-scene" aria-hidden="true">
         <div class="intro-wire"></div>
         <div class="intro-pole">
@@ -1295,6 +1294,7 @@
       </div>
       <div class="intro-progress"><span></span></div>
       <p class="intro-hint">Clique em qualquer área para entrar</p>
+      <p class="intro-credit">Desenvolvido por <strong>João Oliveira</strong></p>
     </div>
   </div>
 
