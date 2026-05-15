@@ -3954,6 +3954,10 @@ app.get("/api/orse/importar", async (req, res) => {
   res.json(resultado);
 });
 
+app.get("/healthz", (req, res) => {
+  res.json({ ok: true });
+});
+
 app.get("/api/health", (req, res) => {
   res.json({
     ok: true,
