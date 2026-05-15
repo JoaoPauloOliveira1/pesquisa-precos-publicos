@@ -183,6 +183,24 @@ const SINONIMOS = {
 
 const STOP_WORDS = new Set(["a", "o", "as", "os", "de", "da", "do", "das", "dos", "e", "em", "para"]);
 
+const TERMOS_EQUIVALENTES = {
+  a: ["amp", "ampere", "amperes", "amper", "a"],
+  amp: ["a", "ampere", "amperes", "amper", "amp"],
+  ampere: ["a", "amp", "amperes", "amper", "ampere"],
+  amper: ["a", "amp", "ampere", "amperes", "amper"],
+  amperes: ["a", "amp", "ampere", "amper", "amperes"],
+  v: ["volt", "volts", "v"],
+  volt: ["v", "volts", "volt"],
+  volts: ["v", "volt", "volts"],
+  w: ["watt", "watts", "w"],
+  watt: ["w", "watts", "watt"],
+  watts: ["w", "watt", "watts"],
+  pol: ["polegada", "polegadas", "pol"],
+  polegada: ["pol", "polegadas", "polegada"],
+  polegadas: ["pol", "polegada", "polegadas"],
+  idr: ["idr", "interruptor", "diferencial", "residual"],
+};
+
 const CLASSES_MATERIAL_RELACIONADAS = [
   {
     codigoClasse: 6145,
@@ -243,6 +261,82 @@ function palavrasRelevantes(termoBusca) {
   return normalizarTexto(termoBusca)
     .split(" ")
     .filter((p) => p && !STOP_WORDS.has(p));
+}
+
+function tokenizarTexto(texto) {
+  return normalizarTexto(texto)
+    .split(" ")
+    .filter(Boolean);
+}
+
+function variantesPalavraBusca(palavra) {
+  const base = normalizarTexto(palavra);
+  return Array.from(new Set([base, ...(TERMOS_EQUIVALENTES[base] || [])].map(normalizarTexto).filter(Boolean)));
+}
+
+function tokenTextoCombinaComBusca(tokenTexto, palavraBusca) {
+  const token = normalizarTexto(tokenTexto);
+  if (!token) return false;
+
+  return variantesPalavraBusca(palavraBusca).some((variante) => {
+    if (!variante) return false;
+    if (token === variante) return true;
+    if (variante.length >= 3 && token.startsWith(variante)) return true;
+    if (token.length >= 3 && variante.startsWith(token)) return true;
+    if (variante.length >= 4 && token.includes(variante)) return true;
+    if (token.length >= 4 && variante.includes(token)) return true;
+    return false;
+  });
+}
+
+function avaliarAderenciaTexto(textoBase, termoBusca) {
+  const palavrasBusca = palavrasRelevantes(termoBusca);
+  const tokensTexto = tokenizarTexto(textoBase);
+  const textoNormalizado = tokensTexto.join(" ");
+
+  if (!palavrasBusca.length || !tokensTexto.length) {
+    return { corresponde: false, pontuacao: 0, correspondencias: 0, exigido: 0 };
+  }
+
+  let pontuacao = 0;
+  let correspondencias = 0;
+
+  for (const palavra of palavrasBusca) {
+    const variantes = variantesPalavraBusca(palavra);
+    const exata = tokensTexto.some((token) => variantes.includes(token));
+    const parcial = !exata && tokensTexto.some((token) => tokenTextoCombinaComBusca(token, palavra));
+
+    if (exata) {
+      correspondencias += 1;
+      pontuacao += 18;
+      continue;
+    }
+
+    if (parcial) {
+      correspondencias += 1;
+      pontuacao += 10;
+    }
+  }
+
+  const primeiraPalavra = palavrasBusca[0];
+  if (primeiraPalavra && tokensTexto.some((token) => tokenTextoCombinaComBusca(token, primeiraPalavra))) {
+    pontuacao += 20;
+  }
+
+  if (textoNormalizado === normalizarTexto(termoBusca)) pontuacao += 80;
+  if (textoNormalizado.includes(normalizarTexto(termoBusca))) pontuacao += 25;
+
+  const exigido =
+    palavrasBusca.length <= 2
+      ? palavrasBusca.length
+      : Math.min(palavrasBusca.length, Math.max(2, palavrasBusca.length - 1));
+
+  return {
+    corresponde: correspondencias >= exigido || pontuacao >= 32,
+    pontuacao,
+    correspondencias,
+    exigido,
+  };
 }
 
 function normalizarValor(valor) {
@@ -1087,10 +1181,7 @@ async function baixarArquivoPublico(url, destino, timeoutMs = 120000) {
 }
 
 function textoContemTodasPalavras(textoBase, termoBusca) {
-  const palavras = palavrasRelevantes(termoBusca);
-  const texto = ` ${normalizarTexto(textoBase)} `;
-
-  return palavras.every((p) => texto.includes(` ${p} `));
+  return avaliarAderenciaTexto(textoBase, termoBusca).corresponde;
 }
 
 function textoContemAlgumaPalavra(textoBase, palavras) {
@@ -1727,13 +1818,25 @@ async function consultarBaseLocal({ fonteId, termo, uf }) {
   const ufBusca = normalizarTexto(uf || "");
 
   const encontrados = registros
-    .filter((registro) => {
+    .map((registro) => {
       const texto = `${registro.codigo || ""} ${registro.descricao || ""}`;
-      const correspondeTexto = termosBusca.some((termoBusca) => textoContemTodasPalavras(texto, termoBusca));
+      const melhorAderencia = termosBusca.reduce((melhor, termoBusca) => {
+        const avaliacao = avaliarAderenciaTexto(texto, termoBusca);
+        return avaliacao.pontuacao > melhor.pontuacao ? avaliacao : melhor;
+      }, { corresponde: false, pontuacao: 0 });
       const correspondeUf = !ufBusca || !registro.uf || normalizarTexto(registro.uf) === ufBusca;
       const valor = normalizarValor(registro.precoUnitario);
-      return correspondeTexto && correspondeUf && !Number.isNaN(valor) && valor > 0;
+      return {
+        registro,
+        pontuacao: melhorAderencia.pontuacao,
+        correspondeTexto: melhorAderencia.corresponde,
+        correspondeUf,
+        valor,
+      };
     })
+    .filter(({ correspondeTexto, correspondeUf, valor }) => correspondeTexto && correspondeUf && !Number.isNaN(valor) && valor > 0)
+    .sort((a, b) => b.pontuacao - a.pontuacao)
+    .map(({ registro }) => registro)
     .slice(0, 100);
 
   return {
