@@ -246,6 +246,8 @@ function normalizarTexto(texto) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/([a-z])(\d)/gi, "$1 $2")
+    .replace(/(\d)([a-z])/gi, "$1 $2")
     .replace(/[^\w\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
