@@ -50,6 +50,7 @@
         radial-gradient(circle at top, rgba(246, 195, 67, 0.16), transparent 28%),
         linear-gradient(135deg, rgba(0,122,61,0.98), rgba(0,91,170,0.98));
       transition: opacity 0.55s ease, visibility 0.55s ease;
+      cursor: pointer;
     }
 
     .intro-overlay.hidden {
@@ -124,6 +125,95 @@
       animation: intro-rise 0.6s ease 0.32s forwards;
     }
 
+    .intro-scene {
+      position: relative;
+      margin-top: 18px;
+      height: 76px;
+      opacity: 0;
+      transform: translateY(6px);
+      animation: intro-rise 0.55s ease 0.9s forwards;
+    }
+
+    .intro-wire {
+      position: absolute;
+      left: 0;
+      right: 86px;
+      top: 26px;
+      height: 3px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(255,255,255,0.22), rgba(255,255,255,0.36));
+      overflow: hidden;
+    }
+
+    .intro-wire::after {
+      content: "";
+      position: absolute;
+      inset: -4px auto -4px -18%;
+      width: 22%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(246,195,67,0), rgba(246,195,67,0.98), rgba(255,255,255,0.98), rgba(246,195,67,0));
+      box-shadow: 0 0 12px rgba(246,195,67,0.72);
+      animation: intro-energy 1.9s ease 0.38s forwards;
+    }
+
+    .intro-pole {
+      position: absolute;
+      right: 26px;
+      top: 2px;
+      width: 48px;
+      height: 68px;
+    }
+
+    .intro-pole-stem {
+      position: absolute;
+      right: 17px;
+      bottom: 0;
+      width: 4px;
+      height: 48px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.78);
+    }
+
+    .intro-pole-arm {
+      position: absolute;
+      right: 17px;
+      top: 17px;
+      width: 24px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.78);
+      transform-origin: right center;
+      transform: rotate(-18deg);
+    }
+
+    .intro-pole-head {
+      position: absolute;
+      right: -1px;
+      top: 8px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.34);
+      box-shadow: 0 0 0 rgba(246,195,67,0);
+      animation: intro-pole-light 0.7s ease 1.85s forwards;
+    }
+
+    .intro-pole-glow {
+      position: absolute;
+      right: -30px;
+      top: 16px;
+      width: 88px;
+      height: 54px;
+      border-radius: 50%;
+      background: radial-gradient(circle at left center, rgba(255,245,200,0.78), rgba(246,195,67,0.38) 38%, rgba(255,255,255,0) 72%);
+      filter: blur(6px);
+      opacity: 0;
+      transform: scale(0.72);
+      transform-origin: left center;
+      animation: intro-pole-glow 0.75s ease 1.92s forwards;
+    }
+
     .intro-progress {
       width: 100%;
       height: 4px;
@@ -140,7 +230,17 @@
       background: linear-gradient(90deg, rgba(246,195,67,0.95), rgba(255,255,255,0.95));
       transform: scaleX(0);
       transform-origin: left;
-      animation: intro-progress 1.35s ease 0.15s forwards;
+      animation: intro-progress 1.7s ease 0.18s forwards;
+    }
+
+    .intro-hint {
+      margin-top: 18px;
+      color: rgba(255,255,255,0.84);
+      font-size: 12px;
+      text-align: center;
+      letter-spacing: 0.02em;
+      opacity: 0;
+      animation: intro-hint-show 0.45s ease 2s forwards;
     }
 
     .app-shell {
@@ -167,9 +267,59 @@
       }
     }
 
+    @keyframes intro-energy {
+      0% {
+        left: -18%;
+        opacity: 0.25;
+      }
+      20% {
+        opacity: 1;
+      }
+      100% {
+        left: 102%;
+        opacity: 1;
+      }
+    }
+
+    @keyframes intro-pole-light {
+      0% {
+        background: rgba(255,255,255,0.22);
+        box-shadow: 0 0 0 rgba(246,195,67,0);
+      }
+      45% {
+        background: rgba(255,252,236,1);
+        box-shadow: 0 0 22px rgba(246,195,67,0.92), 0 0 48px rgba(255,255,255,0.55);
+      }
+      100% {
+        background: rgba(255,248,215,0.96);
+        box-shadow: 0 0 16px rgba(246,195,67,0.7), 0 0 34px rgba(255,255,255,0.42);
+      }
+    }
+
+    @keyframes intro-pole-glow {
+      0% {
+        opacity: 0;
+        transform: scale(0.72);
+      }
+      55% {
+        opacity: 1;
+        transform: scale(1.02);
+      }
+      100% {
+        opacity: 0.78;
+        transform: scale(0.94);
+      }
+    }
+
     @keyframes intro-shine {
       to {
         transform: translateX(140%);
+      }
+    }
+
+    @keyframes intro-hint-show {
+      to {
+        opacity: 1;
       }
     }
 
@@ -1112,7 +1262,17 @@
         <h2 class="intro-title">Pesquisa de Preços</h2>
       </div>
       <p class="intro-subtitle">Diretoria Executiva de Iluminação Pública</p>
+      <div class="intro-scene" aria-hidden="true">
+        <div class="intro-wire"></div>
+        <div class="intro-pole">
+          <div class="intro-pole-glow"></div>
+          <div class="intro-pole-head"></div>
+          <div class="intro-pole-arm"></div>
+          <div class="intro-pole-stem"></div>
+        </div>
+      </div>
       <div class="intro-progress"><span></span></div>
+      <p class="intro-hint">Clique em qualquer área para entrar</p>
     </div>
   </div>
 
@@ -2331,10 +2491,13 @@
       const overlay = document.getElementById("introOverlay");
       document.body.classList.add("intro-active");
 
-      window.setTimeout(() => {
+      const fecharIntro = () => {
         overlay.classList.add("hidden");
         document.body.classList.remove("intro-active");
-      }, 1600);
+        overlay.removeEventListener("click", fecharIntro);
+      };
+
+      overlay.addEventListener("click", fecharIntro);
     }
 
     setMesPadrao();
