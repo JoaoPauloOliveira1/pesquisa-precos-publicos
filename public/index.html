@@ -108,7 +108,7 @@
       margin: 0;
       color: #fff;
       font-family: "Trebuchet MS", "Arial Narrow", Arial, sans-serif;
-      font-size: clamp(24px, 3vw, 34px);
+      font-size: clamp(18px, 2.2vw, 24px);
       font-weight: 700;
       line-height: 1.05;
       text-wrap: balance;
@@ -117,17 +117,21 @@
 
     .intro-subtitle {
       display: inline-block;
-      margin: 2px 0 0;
-      padding: 8px 14px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.12);
-      border: 1px solid rgba(255,255,255,0.18);
-      color: rgba(255,255,255,0.96);
-      font-size: 15px;
+      margin: 8px 0 0;
+      padding: 0;
+      border-radius: 0;
+      background: transparent;
+      border: 0;
+      color: rgba(255,255,255,0.98);
+      font-size: clamp(24px, 3vw, 34px);
       font-weight: 700;
-      letter-spacing: 0.01em;
-      text-transform: uppercase;
-      box-shadow: 0 10px 20px rgba(0,0,0,0.08);
+      letter-spacing: 0;
+      text-transform: none;
+      box-shadow: none;
+      font-family: "Trebuchet MS", "Arial Narrow", Arial, sans-serif;
+      line-height: 1.08;
+      text-wrap: balance;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
       opacity: 0;
       transform: translateY(8px);
       animation: intro-rise 0.6s ease 0.32s forwards;
@@ -1280,7 +1284,7 @@
         <div class="intro-logo-wrap">
           <img class="intro-logo" src="https://emlurb.recife.pe.gov.br/sites/default/files/emlurb.jpg" alt="EMLURB" />
         </div>
-        <h2 class="intro-title">Pesquisa de Preços</h2>
+        <h2 class="intro-title"></h2>
       </div>
       <p class="intro-subtitle">Diretoria Executiva de Iluminação Pública</p>
       <div class="intro-scene" aria-hidden="true">
