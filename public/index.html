@@ -86,9 +86,6 @@
       align-items: center;
       gap: 14px;
       margin-bottom: 22px;
-      opacity: 0;
-      transform: translateY(10px);
-      animation: intro-rise 0.6s ease 0.1s forwards;
     }
 
     .intro-logo-wrap {
@@ -96,6 +93,9 @@
       border-radius: 14px;
       padding: 10px 12px;
       box-shadow: 0 14px 28px rgba(0, 0, 0, 0.16);
+      opacity: 0;
+      transform: translateY(10px) scale(0.96);
+      animation: intro-rise-scale 0.55s ease 0.08s forwards;
     }
 
     .intro-logo {
@@ -115,6 +115,9 @@
       white-space: nowrap;
       text-align: center;
       text-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+      opacity: 0;
+      transform: translateY(10px);
+      animation: intro-rise 0.55s ease 0.42s forwards;
     }
 
     .intro-scene {
@@ -127,13 +130,68 @@
 
     .intro-wire {
       position: absolute;
-      left: 0;
+      left: 34px;
       right: 88px;
       bottom: 10px;
       height: 4px;
       border-radius: 999px;
       background: rgba(255,255,255,0.22);
       overflow: hidden;
+    }
+
+    .intro-citizen {
+      position: absolute;
+      left: 0;
+      bottom: 2px;
+      width: 28px;
+      height: 42px;
+      opacity: 0;
+      animation: intro-rise 0.5s ease 0.78s forwards;
+    }
+
+    .intro-citizen-head {
+      position: absolute;
+      left: 6px;
+      top: 0;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.9);
+    }
+
+    .intro-citizen-body {
+      position: absolute;
+      left: 9px;
+      top: 10px;
+      width: 4px;
+      height: 20px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.86);
+    }
+
+    .intro-citizen-arm {
+      position: absolute;
+      left: 11px;
+      top: 13px;
+      width: 18px;
+      height: 3px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.88);
+      transform-origin: left center;
+      transform: rotate(-16deg);
+    }
+
+    .intro-citizen-arm::after {
+      content: "";
+      position: absolute;
+      right: -2px;
+      top: -2px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(246,195,67,0.95);
+      box-shadow: 0 0 0 rgba(246,195,67,0.2);
+      animation: intro-citizen-pulse 0.8s ease 0.95s 2;
     }
 
     .intro-wire::after {
@@ -247,6 +305,13 @@
       }
     }
 
+    @keyframes intro-rise-scale {
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
     @keyframes intro-energy {
       0% {
         left: -18%;
@@ -258,6 +323,18 @@
       100% {
         left: 102%;
         opacity: 1;
+      }
+    }
+
+    @keyframes intro-citizen-pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(246,195,67,0.35);
+      }
+      60% {
+        box-shadow: 0 0 0 9px rgba(246,195,67,0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(246,195,67,0);
       }
     }
 
@@ -1239,12 +1316,17 @@
         <div class="intro-logo-wrap">
           <img class="intro-logo" src="https://emlurb.recife.pe.gov.br/sites/default/files/emlurb.jpg" alt="EMLURB" />
         </div>
-        <h2 class="intro-title">Diretoria Executiva de Iluminação Pública</h2>
+      <h2 class="intro-title">Diretoria Executiva de Iluminação Pública</h2>
       </div>
       <div class="intro-scene" aria-hidden="true">
+        <div class="intro-citizen">
+          <div class="intro-citizen-head"></div>
+          <div class="intro-citizen-body"></div>
+          <div class="intro-citizen-arm"></div>
+        </div>
         <div class="intro-wire"></div>
         <div class="intro-pole">
-        <div class="intro-pole-glow"></div>
+          <div class="intro-pole-glow"></div>
           <div class="intro-pole-head"></div>
           <div class="intro-pole-arm"></div>
           <div class="intro-pole-stem"></div>
