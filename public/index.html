@@ -1045,6 +1045,23 @@
     .paginacao-fonte button:active:not(:disabled) { transform: scale(0.97); }
     .paginacao-fonte button:disabled { opacity: 0.32; cursor: default; }
 
+    .fonte-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 18px;
+      padding: 7px 0 10px;
+      margin-bottom: 2px;
+      border-bottom: 1px solid var(--line);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+    }
+    .fonte-stats strong {
+      color: var(--fonte-accent, var(--ink));
+      font-weight: 800;
+    }
+
     .fonte-bloco.fonte-pncp, .resultado.fonte-pncp, .carrinho-item.fonte-pncp
       { --fonte-accent:var(--emlurb-blue); --fonte-border:#b8d6ee; --fonte-bg:var(--emlurb-blue-soft); --fonte-text:var(--emlurb-blue-dark); }
     .fonte-bloco.fonte-sinapi, .resultado.fonte-sinapi, .carrinho-item.fonte-sinapi
@@ -2135,6 +2152,8 @@
         return;
       }
 
+      atualizarUrl();
+
       if (!fontesAtivas.pncp) {
         lista.innerHTML = "";
         document.getElementById("cardItens").classList.add("hidden");
@@ -2576,6 +2595,20 @@
       return "";
     }
 
+    function calcularEstatisticasFonte(registros) {
+      const precos = registros
+        .map(r => parseFloat(r.precoUnitario))
+        .filter(v => !isNaN(v) && v > 0)
+        .sort((a, b) => a - b);
+      if (!precos.length) return null;
+      const soma = precos.reduce((s, v) => s + v, 0);
+      const mid = Math.floor(precos.length / 2);
+      const mediana = precos.length % 2 === 0
+        ? (precos[mid - 1] + precos[mid]) / 2
+        : precos[mid];
+      return { menor: precos[0], maior: precos[precos.length - 1], media: soma / precos.length, mediana };
+    }
+
     function fonteChaveDeOrigem(origem) {
       const n = (origem || "").toLowerCase().replace(/[\s\-_]/g, "");
       if (n.includes("pncp")) return "pncp";
@@ -2607,6 +2640,16 @@
       const paginados = registros.slice(inicio, fim);
       const totalPaginas = Math.ceil(total / ITENS_POR_PAGINA);
 
+      const stats = calcularEstatisticasFonte(registros);
+      const statsHtml = stats ? `
+        <div class="fonte-stats">
+          <span>Média <strong>${moeda(stats.media)}</strong></span>
+          <span>Mediana <strong>${moeda(stats.mediana)}</strong></span>
+          <span>Mín <strong>${moeda(stats.menor)}</strong></span>
+          <span>Máx <strong>${moeda(stats.maior)}</strong></span>
+        </div>
+      ` : "";
+
       const paginacaoHtml = totalPaginas > 1 ? `
         <div class="paginacao-fonte">
           <button type="button" onclick="navegarPaginaFonte('${fonte}', -1)" ${pagina === 0 ? "disabled" : ""}>‹ Anterior</button>
@@ -2621,6 +2664,7 @@
             <h3>${escapeHtml(origem)}</h3>
             <span class="badge fonte-badge">${total} registro(s)</span>
           </div>
+          ${statsHtml}
           <div class="resultado-lista">
             ${paginados.length ? paginados.map(montarCardResultado).join("") : estadoHtml || "<p class='empty'>Nenhum preço encontrado nesta fonte.</p>"}
           </div>
@@ -2847,8 +2891,41 @@
       overlay.addEventListener("click", fecharIntro);
     }
 
+    function atualizarUrl() {
+      const termo = document.getElementById("termo").value.trim();
+      if (!termo) return;
+      const fontes = Object.entries(fontesAtivas)
+        .filter(([, ativo]) => ativo)
+        .map(([f]) => f)
+        .join(",");
+      const params = new URLSearchParams({ q: termo, fontes });
+      window.history.pushState({}, "", `${window.location.pathname}?${params.toString()}`);
+    }
+
+    function restaurarDaUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get("q");
+      if (!q) return;
+
+      document.getElementById("termo").value = q;
+
+      const fonteParam = params.get("fontes");
+      if (fonteParam) {
+        const desejadas = new Set(fonteParam.split(",").map(f => f.trim()));
+        Object.keys(fontesAtivas).forEach(fonte => {
+          const ativo = desejadas.has(fonte);
+          if (fontesAtivas[fonte] !== ativo) {
+            const el = document.querySelector(`.fonte-toggle[data-fonte="${fonte}"]`);
+            if (el) alternarFonte(fonte, el);
+          }
+        });
+      }
+
+      buscarItens();
+    }
+
     setMesPadrao();
-    carregarConfiguracaoFontes();
+    carregarConfiguracaoFontes().then(restaurarDaUrl);
     iniciarAberturaAplicacao();
   </script>
 </body>
