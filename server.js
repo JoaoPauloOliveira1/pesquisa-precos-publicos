@@ -1045,7 +1045,7 @@ function normalizarItemSinapi(item, tipoSinapi, parametros) {
   const precoCampos =
     tipoSinapi === "Composicao"
       ? ["custo_total", "custoTotal", "preco_mediano", "precoMediano", "precoUnitario", "preco_unitario", "valor"]
-      : ["preco_mediano", "precoMediano", "precoUnitario", "preco_unitario", "valor", "custo_total", "custoTotal"];
+      : ["preco", "preco_mediano", "precoMediano", "precoUnitario", "preco_unitario", "valor", "custo_total", "custoTotal"];
 
   return {
     origem: "SINAPI",
@@ -1054,7 +1054,10 @@ function normalizarItemSinapi(item, tipoSinapi, parametros) {
     descricao: normalizarValorTextoSinapi(lerValorSinapi(item, ["descricao", "nome", "titulo"])),
     unidade: normalizarValorTextoSinapi(lerValorSinapi(item, ["unidade", "sigla_unidade", "siglaUnidade"])),
     precoUnitario: normalizarValorTextoSinapi(lerValorSinapi(item, precoCampos)),
-    dataReferencia: normalizarValorTextoSinapi(lerValorSinapi(item, ["data_referencia", "dataReferencia"])) || parametros.data_referencia,
+    dataReferencia:
+      normalizarValorTextoSinapi(lerValorSinapi(item, ["referencia", "data_referencia", "dataReferencia"])) ||
+      parametros.referencia ||
+      parametros.data_referencia,
     uf: normalizarValorTextoSinapi(lerValorSinapi(item, ["uf"])) || parametros.uf,
     regime: normalizarValorTextoSinapi(lerValorSinapi(item, ["regime"])) || parametros.regime,
     regiao: REGIOES_UF[normalizarValorTextoSinapi(lerValorSinapi(item, ["uf"])) || parametros.uf] || "",
