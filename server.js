@@ -4091,6 +4091,39 @@ app.get("/healthz", (req, res) => {
   res.json({ ok: true });
 });
 
+const cacheTemHistorico = new Map();
+const HISTORICO_TTL_MS = 1000 * 60 * 60 * 24;
+
+app.get("/api/tem-historico", async (req, res) => {
+  const codigo = String(req.query.codigo || "").trim();
+  const tipo = String(req.query.tipo || "material").trim();
+  if (!codigo) return res.status(400).json({ erro: "Informe ?codigo=X" });
+
+  const cacheKey = `${tipo}:${codigo}`;
+  const cached = cacheTemHistorico.get(cacheKey);
+  if (cached && Date.now() - cached.at < HISTORICO_TTL_MS) {
+    return res.json({ temHistorico: cached.temHistorico });
+  }
+
+  const endpoint = tipo === "servico"
+    ? "/modulo-pesquisa-preco/3_consultarServico"
+    : "/modulo-pesquisa-preco/1_consultarMaterial";
+
+  const url = new URL(BASE + endpoint);
+  url.searchParams.set("pagina", "1");
+  url.searchParams.set("tamanhoPagina", "10");
+  url.searchParams.set("codigoItemCatalogo", codigo);
+
+  try {
+    const dados = await consultarJson(url, 12000);
+    const temHistorico = (dados.totalRegistros || 0) > 0;
+    cacheTemHistorico.set(cacheKey, { temHistorico, at: Date.now() });
+    res.json({ temHistorico });
+  } catch {
+    res.json({ temHistorico: null });
+  }
+});
+
 app.get("/api/debug-pncp", async (req, res) => {
   const codigo = String(req.query.codigo || "").trim();
   const tipo = String(req.query.tipo || "material").trim();

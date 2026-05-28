@@ -1590,6 +1590,7 @@
     let estadoFontesConsulta = {};
     let paginasFonte = {};
     const ITENS_POR_PAGINA = 10;
+    let verificacaoHistoricoToken = 0;
     let itemAtual = null;
     let carrinho = [];
     let buscaEmAndamento = false;
@@ -1932,6 +1933,8 @@
       ordenarPncpDiretoPorUltimo(itens).forEach((item) => {
         const div = document.createElement("div");
         div.className = item.diretoPncp ? "item direto-pncp" : "item";
+        div.dataset.codigo = item.codigo || "";
+        div.dataset.tipo = item.tipo === "servico" ? "servico" : "material";
         const detalhe = [
           item.somenteSinapi ? "Resultado rápido por PDM" : "",
           item.diretoPncp ? "Último recurso: busca direta no PNCP" : "",
@@ -2030,6 +2033,25 @@
       aplicarFiltrosCatalogo();
     }
 
+    async function verificarHistoricoItens(itens, token) {
+      const candidatos = itens.filter(i => !i.diretoPncp && !i.somenteSinapi && i.codigo);
+      const LOTE = 3;
+      for (let i = 0; i < candidatos.length; i += LOTE) {
+        if (verificacaoHistoricoToken !== token) return;
+        await Promise.all(candidatos.slice(i, i + LOTE).map(async (item) => {
+          try {
+            const r = await fetch(`/api/tem-historico?codigo=${encodeURIComponent(item.codigo)}&tipo=${item.tipo === "servico" ? "servico" : "material"}`);
+            const dados = await r.json();
+            if (verificacaoHistoricoToken !== token) return;
+            if (dados.temHistorico === false) {
+              document.querySelector(`.item[data-codigo="${item.codigo}"]`)?.classList?.add("sem-historico");
+            }
+          } catch {}
+        }));
+        if (i + LOTE < candidatos.length) await new Promise(r => setTimeout(r, 220));
+      }
+    }
+
     function renderizarItensEncontrados(dados, lista) {
       lista.innerHTML = "";
       itensCatalogoOriginais = ordenarPncpDiretoPorUltimo(dados.itens || []);
@@ -2041,6 +2063,9 @@
       renderizarFiltrosCatalogo(itensCatalogoOriginais);
       renderizarListaItens(itensCatalogoOriginais, lista);
       document.getElementById("cardItens").classList.remove("hidden");
+
+      const token = ++verificacaoHistoricoToken;
+      verificarHistoricoItens(itensCatalogoOriginais, token);
     }
 
     async function fetchComTimeout(url, opcoes = {}, timeoutMs = 45000) {
