@@ -1435,6 +1435,15 @@
                 Regime SINAPI
                 <input id="sinapiRegime" type="text" value="Desonerado e n?o desonerado" disabled />
               </label>
+
+              <label>
+                Tipo SINAPI
+                <select id="sinapiTipo">
+                  <option value="ambos" selected>Itens e composi??es</option>
+                  <option value="item">Somente itens</option>
+                  <option value="composicao">Somente composi??es</option>
+                </select>
+              </label>
             </div>
 
             <button id="buscarBtn" onclick="buscarItens()">Buscar</button>
@@ -1513,6 +1522,10 @@
       PI: "Nordeste", RJ: "Sudeste", RN: "Nordeste", RS: "Sul", RO: "Norte", RR: "Norte",
       SC: "Sul", SP: "Sudeste", SE: "Nordeste", TO: "Norte",
     };
+    const ORDEM_UF_SINAPI = [
+      "PE", "PB", "AL", "RN", "PI", "BA", "CE", "SE", "MA", "PA", "TO", "DF", "GO", "MG",
+      "ES", "RJ", "SP", "MS", "MT", "PR", "SC", "RS", "RR", "AP", "AM", "RO", "AC",
+    ];
 
     function setMesPadrao() {
       const campo = document.getElementById("sinapiData");
@@ -2168,6 +2181,7 @@
         sinapiUf: "BR",
         sinapiDataReferencia: "",
         sinapiRegime: "AMBOS",
+        sinapiTipo: document.getElementById("sinapiTipo")?.value || "ambos",
         incluirSinapi: sinapiAtivo ? "1" : "0",
         incluirPncp: !somenteFontesDiretas && fontesAtivas.pncp ? "1" : "0",
         fontesAdicionais,
@@ -2417,17 +2431,23 @@
 
     function filtrarSinapiPorRegiao(registros) {
       const filtro = document.getElementById("sinapiRegiaoFiltro")?.value || "todas";
+      const ordenarSinapi = (a, b) => {
+        const ufA = (a.uf || "").toUpperCase();
+        const ufB = (b.uf || "").toUpperCase();
+        const ordemA = ORDEM_UF_SINAPI.indexOf(ufA);
+        const ordemB = ORDEM_UF_SINAPI.indexOf(ufB);
+        const posA = ordemA === -1 ? 999 : ordemA;
+        const posB = ordemB === -1 ? 999 : ordemB;
+        return posA - posB || numeroMoeda(a.precoUnitario) - numeroMoeda(b.precoUnitario);
+      };
+
       if (filtro === "todas") {
-        return [...registros].sort((a, b) => {
-          const regiaoA = a.regiao || "";
-          const regiaoB = b.regiao || "";
-          return regiaoA.localeCompare(regiaoB, "pt-BR") || numeroMoeda(a.precoUnitario) - numeroMoeda(b.precoUnitario);
-        });
+        return [...registros].sort(ordenarSinapi);
       }
 
       return registros
         .filter((registro) => (registro.regiao || "") === filtro)
-        .sort((a, b) => numeroMoeda(a.precoUnitario) - numeroMoeda(b.precoUnitario));
+        .sort(ordenarSinapi);
     }
 
     function montarResultados() {

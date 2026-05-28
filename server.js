@@ -1030,23 +1030,31 @@ function lerValorSinapi(item, campos) {
   return "";
 }
 
+function normalizarValorTextoSinapi(valor) {
+  if (valor === undefined || valor === null) return "";
+  if (typeof valor === "object") {
+    return primeiroCampo(valor, ["codigo", "cod", "id", "valor", "descricao", "nome", "texto", "label"]) || "";
+  }
+  return valor;
+}
+
 function normalizarItemSinapi(item, tipoSinapi, parametros) {
   const precoCampos =
-    tipoSinapi === "Composição"
+    tipoSinapi === "Composicao"
       ? ["custo_total", "custoTotal", "preco_mediano", "precoMediano", "precoUnitario", "preco_unitario", "valor"]
       : ["preco_mediano", "precoMediano", "precoUnitario", "preco_unitario", "valor", "custo_total", "custoTotal"];
 
   return {
     origem: "SINAPI",
     tipoSinapi,
-    codigo: lerValorSinapi(item, ["codigo", "cod", "id"]),
-    descricao: lerValorSinapi(item, ["descricao", "nome", "titulo"]),
-    unidade: lerValorSinapi(item, ["unidade", "sigla_unidade", "siglaUnidade"]),
-    precoUnitario: lerValorSinapi(item, precoCampos),
-    dataReferencia: lerValorSinapi(item, ["data_referencia", "dataReferencia"]) || parametros.data_referencia,
-    uf: lerValorSinapi(item, ["uf"]) || parametros.uf,
-    regime: lerValorSinapi(item, ["regime"]) || parametros.regime,
-    regiao: REGIOES_UF[lerValorSinapi(item, ["uf"]) || parametros.uf] || "",
+    codigo: normalizarValorTextoSinapi(lerValorSinapi(item, ["codigo", "cod", "id"])),
+    descricao: normalizarValorTextoSinapi(lerValorSinapi(item, ["descricao", "nome", "titulo"])),
+    unidade: normalizarValorTextoSinapi(lerValorSinapi(item, ["unidade", "sigla_unidade", "siglaUnidade"])),
+    precoUnitario: normalizarValorTextoSinapi(lerValorSinapi(item, precoCampos)),
+    dataReferencia: normalizarValorTextoSinapi(lerValorSinapi(item, ["data_referencia", "dataReferencia"])) || parametros.data_referencia,
+    uf: normalizarValorTextoSinapi(lerValorSinapi(item, ["uf"])) || parametros.uf,
+    regime: normalizarValorTextoSinapi(lerValorSinapi(item, ["regime"])) || parametros.regime,
+    regiao: REGIOES_UF[normalizarValorTextoSinapi(lerValorSinapi(item, ["uf"])) || parametros.uf] || "",
   };
 }
 
@@ -1817,7 +1825,7 @@ async function enriquecerRegistrosComPncp(registros, limite = 150) {
   return enriquecidos;
 }
 
-async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime }) {
+async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime, tipo = "ambos" }) {
   if (!SINAPI_HABILITADO) {
     return {
       configurado: Boolean(SINAPI_API_URL),
@@ -1842,6 +1850,8 @@ async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime }) {
   const referenciaMaisAtual = await obterDataReferenciaSinapiMaisAtual();
   const estados = UFS_BRASIL;
   const regimes = ["NAO_DESONERADO", "DESONERADO"];
+  const incluirInsumos = tipo !== "composicao";
+  const incluirComposicoes = tipo !== "item";
 
   try {
     const contextos = [];
@@ -1861,11 +1871,13 @@ async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime }) {
     const respostas = await executarEmLotes(contextos, 4, async (parametros) => {
       const [insumosRaw, composicoesRaw] = await Promise.all([
         (async () => {
+          if (!incluirInsumos) return [];
           const url = new URL(`${base}/insumos`);
           Object.entries(parametros).forEach(([chave, valor]) => url.searchParams.set(chave, valor));
           return consultarSinapiJson(url);
         })(),
         (async () => {
+          if (!incluirComposicoes) return [];
           const url = new URL(`${base}/composicoes`);
           Object.entries(parametros).forEach(([chave, valor]) => url.searchParams.set(chave, valor));
           return consultarSinapiJson(url);
@@ -1898,6 +1910,7 @@ async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime }) {
       escopo: {
         ufs: "todas",
         regimes: "ambos",
+        tipo,
       },
       registros: registrosUnicos.sort((a, b) => normalizarValor(a.precoUnitario) - normalizarValor(b.precoUnitario)),
     };
@@ -3522,6 +3535,7 @@ app.get("/api/precos", async (req, res) => {
     const sinapiUf = req.query.sinapiUf || "PB";
     const sinapiDataReferencia = req.query.sinapiDataReferencia || dataReferenciaPadrao();
     const sinapiRegime = req.query.sinapiRegime || "NAO_DESONERADO";
+    const sinapiTipo = req.query.sinapiTipo || "ambos";
     const incluirSinapi = req.query.incluirSinapi === "1";
     const incluirPncp = req.query.incluirPncp !== "0";
     const fontesAdicionais = String(req.query.fontesAdicionais || "")
@@ -3629,6 +3643,7 @@ app.get("/api/precos", async (req, res) => {
           uf: sinapiUf,
           dataReferencia: sinapiDataReferencia,
           regime: sinapiRegime,
+          tipo: sinapiTipo,
         })
       : {
           configurado: SINAPI_HABILITADO,
@@ -3746,6 +3761,7 @@ app.get("/api/precos-fonte", async (req, res) => {
         uf,
         dataReferencia: req.query.sinapiDataReferencia || dataReferenciaPadrao(),
         regime: req.query.sinapiRegime || "NAO_DESONERADO",
+        tipo: req.query.sinapiTipo || "ambos",
       }));
     }
 
