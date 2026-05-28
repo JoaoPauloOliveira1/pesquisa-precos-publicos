@@ -4094,6 +4094,13 @@ app.get("/healthz", (req, res) => {
 });
 
 app.get("/api/health", (req, res) => {
+  let sinapiApiHost = "";
+  try {
+    sinapiApiHost = SINAPI_API_URL ? new URL(SINAPI_API_URL).host : "";
+  } catch {
+    sinapiApiHost = "url-invalida";
+  }
+
   res.json({
     ok: true,
     ambiente: {
@@ -4102,6 +4109,7 @@ app.get("/api/health", (req, res) => {
       autoUpdateBases: AUTO_UPDATE_BASES,
       sinapiHabilitado: SINAPI_HABILITADO,
       sinapiConfigurado: Boolean(SINAPI_API_URL),
+      sinapiApiHost,
       sinapiChaveConfigurada: SINAPI_CHAVE_CONFIGURADA,
     },
     fontes: {
