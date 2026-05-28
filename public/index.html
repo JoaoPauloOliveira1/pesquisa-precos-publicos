@@ -1391,7 +1391,7 @@
             </label>
 
             <div class="fontes-panel">
-              <div class="switch-control fonte-toggle disabled" data-fonte="sinapi" role="switch" aria-checked="false" aria-disabled="true" tabindex="-1" title="SINAPI temporariamente desativado">
+              <div class="switch-control fonte-toggle disabled" data-fonte="sinapi" role="switch" aria-checked="false" aria-disabled="true" tabindex="-1" title="SINAPI indisponível neste ambiente">
                 <span class="switch-text">SINAPI</span>
                 <span class="switch-track"><span class="switch-thumb"></span></span>
               </div>
@@ -1556,6 +1556,55 @@
       document.querySelectorAll(".campo-pncp").forEach((campo) => {
         campo.classList.toggle("hidden", !fontesAtivas.pncp);
       });
+    }
+
+    function configurarDisponibilidadeSinapi(disponivel, mensagem = "") {
+      const toggle = document.querySelector('.fonte-toggle[data-fonte="sinapi"]');
+      if (!toggle) return;
+
+      toggle.classList.toggle("disabled", !disponivel);
+      toggle.setAttribute("aria-disabled", String(!disponivel));
+      toggle.tabIndex = disponivel ? 0 : -1;
+      toggle.title = mensagem || (disponivel ? "Consultar SINAPI" : "SINAPI indisponível neste ambiente");
+
+      if (!disponivel && fontesAtivas.sinapi) {
+        fontesAtivas.sinapi = false;
+        sinapiAtivo = false;
+        toggle.classList.remove("ativo");
+        toggle.setAttribute("aria-checked", "false");
+        document.getElementById("sinapiPanel").classList.add("hidden");
+      }
+    }
+
+    async function carregarConfiguracaoFontes() {
+      try {
+        const resposta = await fetchComTimeout("/api/health", {}, 15000);
+        if (!resposta.ok) throw new Error("Não consegui verificar a disponibilidade das fontes.");
+        const dados = await resposta.json();
+        const sinapiDisponivel = Boolean(dados?.ambiente?.sinapiHabilitado);
+        const sinapiConfigurado = Boolean(dados?.ambiente?.sinapiConfigurado);
+        const sinapiChaveConfigurada = Boolean(dados?.ambiente?.sinapiChaveConfigurada);
+
+        if (sinapiDisponivel) {
+          configurarDisponibilidadeSinapi(true, "Consultar SINAPI");
+          document.getElementById("statusSinapi").innerText = "";
+          return;
+        }
+
+        if (sinapiConfigurado && !sinapiChaveConfigurada) {
+          configurarDisponibilidadeSinapi(false, "SINAPI configurado sem chave de acesso");
+          document.getElementById("statusSinapi").innerText = "SINAPI configurado sem chave de acesso.";
+          return;
+        }
+
+        configurarDisponibilidadeSinapi(false, "SINAPI indisponível neste ambiente");
+        document.getElementById("statusSinapi").innerText = sinapiConfigurado
+          ? "SINAPI desativado neste ambiente."
+          : "SINAPI não configurado neste ambiente.";
+      } catch (error) {
+        configurarDisponibilidadeSinapi(false, "SINAPI indisponível neste ambiente");
+        document.getElementById("statusSinapi").innerText = "Não consegui verificar a disponibilidade do SINAPI agora.";
+      }
     }
 
     function setStatus(elemento, mensagem, tipo = "") {
@@ -2565,6 +2614,7 @@
     }
 
     setMesPadrao();
+    carregarConfiguracaoFontes();
     iniciarAberturaAplicacao();
   </script>
 </body>

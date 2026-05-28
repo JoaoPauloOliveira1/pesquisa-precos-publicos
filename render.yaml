@@ -14,4 +14,4 @@ services:
       - key: AUTO_UPDATE_BASES
         value: "0"
       - key: ENABLE_SINAPI
-        value: "0"
+        value: "1"

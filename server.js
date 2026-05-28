@@ -34,6 +34,7 @@ const ORSE_INSUMOS_URL = "https://orse.cehop.se.gov.br/insumosargumento.asp";
 const PE_INTEGRADO_ARP_BASE = "https://www.peintegrado.pe.gov.br/Portal/Pages/AtasRegistroPreco.aspx";
 const SINAPI_API_URL = process.env.SINAPI_API_URL || "";
 const SINAPI_API_KEY = process.env.SINAPI_API_KEY || "";
+const SINAPI_CHAVE_CONFIGURADA = Boolean(SINAPI_API_KEY);
 const DEBUG_LOGS = process.env.DEBUG_LOGS === "1";
 const IS_RENDER = process.env.RENDER === "true";
 const CURL_BIN = process.platform === "win32" ? "curl.exe" : "curl";
@@ -3967,6 +3968,7 @@ app.get("/api/health", (req, res) => {
       autoUpdateBases: AUTO_UPDATE_BASES,
       sinapiHabilitado: SINAPI_HABILITADO,
       sinapiConfigurado: Boolean(SINAPI_API_URL),
+      sinapiChaveConfigurada: SINAPI_CHAVE_CONFIGURADA,
     },
     fontes: {
       pncp: true,
