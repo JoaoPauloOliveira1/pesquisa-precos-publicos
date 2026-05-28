@@ -2421,6 +2421,15 @@
       `;
     }
 
+    function deveRenderizarBlocoPncp() {
+      if (!fontesAtivas.pncp) return false;
+      if (registrosAtuais.length) return true;
+      if (avisoPncpAtual) return true;
+      if (estadoFontesConsulta.pncp) return true;
+      if (!itemAtual) return false;
+      return !itemAtual.pesquisaPorTermo;
+    }
+
     function montarResultados() {
       const pncp = registrosAtuais;
       const sinapi = registrosSinapiAtuais;
@@ -2463,7 +2472,7 @@
 
       document.getElementById("tabelaPrecos").innerHTML = `
         ${avisoPncp}
-        ${fontesAtivas.pncp ? montarBlocoFonte("pncp", "PNCP", pncp) : ""}
+        ${deveRenderizarBlocoPncp() ? montarBlocoFonte("pncp", "PNCP", pncp) : ""}
 
         ${blocoSinapi}
         ${blocosAdicionais}
