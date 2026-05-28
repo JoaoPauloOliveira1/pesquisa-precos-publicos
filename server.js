@@ -3599,9 +3599,7 @@ app.get("/api/precos", async (req, res) => {
 
         resultado = (await enriquecerRegistrosComPncp(resultadoBase, 50))
           .filter((registro) => linkPncpValido(registro.linkPncpGerado))
-          .sort(
-          (a, b) => timestampRegistro(b) - timestampRegistro(a)
-        );
+          .sort((a, b) => timestampRegistro(b) - timestampRegistro(a));
 
         if (resultado.length) {
           erroPncp = "";
@@ -4091,6 +4089,54 @@ app.get("/api/orse/importar", async (req, res) => {
 
 app.get("/healthz", (req, res) => {
   res.json({ ok: true });
+});
+
+app.get("/api/debug-pncp", async (req, res) => {
+  const codigo = String(req.query.codigo || "").trim();
+  const tipo = String(req.query.tipo || "material").trim();
+  if (!codigo) return res.status(400).json({ erro: "Informe ?codigo=XXXXX" });
+
+  const endpoint = tipo === "servico"
+    ? "/modulo-pesquisa-preco/3_consultarServico"
+    : "/modulo-pesquisa-preco/1_consultarMaterial";
+
+  const url = new URL(BASE + endpoint);
+  url.searchParams.set("pagina", "1");
+  url.searchParams.set("tamanhoPagina", "5");
+  url.searchParams.set("codigoItemCatalogo", codigo);
+
+  try {
+    const dados = await consultarJson(url, 30000);
+    const brutos = dados.resultado || [];
+    const amostra = brutos.slice(0, 3);
+
+    res.json({
+      totalBruto: brutos.length,
+      camposDisponiveis: amostra[0] ? Object.keys(amostra[0]) : [],
+      registros: amostra.map((r) => {
+        const licitacao = extrairIdentificacaoLicitacao(r);
+        return {
+          precoUnitario: r.precoUnitario,
+          numeroControlePNCP: r.numeroControlePNCP,
+          numeroControlePNCPCompra: r.numeroControlePNCPCompra,
+          idContratacaoPNCP: r.idContratacaoPNCP,
+          idCompra: r.idCompra,
+          codigoCompra: r.codigoCompra,
+          cnpjOrgao: r.cnpjOrgao,
+          orgaoCnpj: r.orgaoCnpj,
+          sequencialCompra: r.sequencialCompra,
+          anoCompra: r.anoCompra,
+          dataResultado: r.dataResultado,
+          dataPublicacao: r.dataPublicacao,
+          dataCompra: r.dataCompra,
+          linkPncpExtraido: licitacao.linkPncp,
+          linkPncpValido: linkPncpValido(licitacao.linkPncp),
+        };
+      }),
+    });
+  } catch (error) {
+    res.status(500).json({ erro: error.message });
+  }
 });
 
 app.get("/api/health", (req, res) => {
