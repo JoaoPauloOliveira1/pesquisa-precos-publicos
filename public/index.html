@@ -2421,13 +2421,13 @@
         return [...registros].sort((a, b) => {
           const regiaoA = a.regiao || "";
           const regiaoB = b.regiao || "";
-          return regiaoA.localeCompare(regiaoB, "pt-BR") || normalizarValor(a.precoUnitario) - normalizarValor(b.precoUnitario);
+          return regiaoA.localeCompare(regiaoB, "pt-BR") || numeroMoeda(a.precoUnitario) - numeroMoeda(b.precoUnitario);
         });
       }
 
       return registros
         .filter((registro) => (registro.regiao || "") === filtro)
-        .sort((a, b) => normalizarValor(a.precoUnitario) - normalizarValor(b.precoUnitario));
+        .sort((a, b) => numeroMoeda(a.precoUnitario) - numeroMoeda(b.precoUnitario));
     }
 
     function montarResultados() {
