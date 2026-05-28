@@ -831,6 +831,76 @@
       color: #6b7280;
     }
 
+    .filtros-catalogo {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      background: #f1f5f9;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .filtros-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #475569;
+      white-space: nowrap;
+    }
+
+    .filtro-attr {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: #374151;
+    }
+
+    .filtro-attr span {
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .filtro-attr select {
+      font-size: 12px;
+      padding: 3px 6px;
+      border: 1px solid #cbd5e1;
+      border-radius: 5px;
+      background: white;
+      cursor: pointer;
+      max-width: 200px;
+    }
+
+    .filtro-attr select:focus {
+      outline: 2px solid var(--emlurb-blue);
+      border-color: var(--emlurb-blue);
+    }
+
+    .limpar-filtros-btn {
+      font-size: 12px;
+      padding: 3px 10px;
+      background: none;
+      border: 1px solid #94a3b8;
+      border-radius: 5px;
+      cursor: pointer;
+      color: #64748b;
+      margin-left: 4px;
+    }
+
+    .limpar-filtros-btn:hover {
+      background: #f8fafc;
+      color: #374151;
+    }
+
+    .count-itens {
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 4px;
+      padding: 0 2px;
+    }
+
     .toolbar {
       display: flex;
       gap: 10px;
@@ -1454,6 +1524,8 @@
 
         <div id="cardItens" class="card hidden">
           <h2>2. Catálogo PNCP / Compras.gov</h2>
+          <div id="filtrosItens" class="filtros-catalogo hidden"></div>
+          <div id="countItens" class="count-itens hidden"></div>
           <div id="listaItens" class="item-lista"></div>
         </div>
       </div>
@@ -1802,10 +1874,45 @@
       return [...itens].sort((a, b) => Number(Boolean(a.diretoPncp)) - Number(Boolean(b.diretoPncp)));
     }
 
-    function renderizarItensEncontrados(dados, lista) {
-      lista.innerHTML = "";
+    let itensCatalogoOriginais = [];
+    let filtrosCatalogoAtivos = {};
 
-      ordenarPncpDiretoPorUltimo(dados.itens || []).forEach((item) => {
+    function extrairAtributosDescricao(descricao) {
+      const atributos = {};
+      const partes = String(descricao || "").split(",");
+      for (let i = 1; i < partes.length; i++) {
+        const idx = partes[i].indexOf(":");
+        if (idx === -1) continue;
+        const chave = partes[i].slice(0, idx).trim();
+        const valor = partes[i].slice(idx + 1).trim();
+        if (!chave || !valor || chave.length > 50) continue;
+        if (chave === chave.toUpperCase() && /[A-Z]/.test(chave)) {
+          atributos[chave] = valor;
+        }
+      }
+      return atributos;
+    }
+
+    function construirMapaFiltros(itens) {
+      const mapa = {};
+      for (const item of itens) {
+        if (item.diretoPncp || item.somenteSinapi) continue;
+        const attrs = extrairAtributosDescricao(item.descricao);
+        for (const [chave, valor] of Object.entries(attrs)) {
+          if (!mapa[chave]) mapa[chave] = new Set();
+          mapa[chave].add(valor);
+        }
+      }
+      return Object.fromEntries(
+        Object.entries(mapa)
+          .filter(([, valores]) => valores.size >= 2)
+          .sort(([a], [b]) => a.localeCompare(b, "pt-BR"))
+      );
+    }
+
+    function renderizarListaItens(itens, lista) {
+      lista.innerHTML = "";
+      ordenarPncpDiretoPorUltimo(itens).forEach((item) => {
         const div = document.createElement("div");
         div.className = item.diretoPncp ? "item direto-pncp" : "item";
         const detalhe = [
@@ -1826,11 +1933,96 @@
           </div>
           <button type="button">${item.diretoPncp ? "PNCP direto" : "Ver preços"}</button>
         `;
-
         div.querySelector("button").addEventListener("click", (event) => consultarPrecos(item, event.currentTarget));
         lista.appendChild(div);
       });
+    }
 
+    function renderizarFiltrosCatalogo(itens) {
+      const container = document.getElementById("filtrosItens");
+      if (!container) return;
+
+      const mapaFiltros = construirMapaFiltros(itens);
+      const atributos = Object.keys(mapaFiltros);
+
+      if (!atributos.length) {
+        container.classList.add("hidden");
+        container.innerHTML = "";
+        return;
+      }
+
+      filtrosCatalogoAtivos = {};
+      atributos.forEach((attr) => { filtrosCatalogoAtivos[attr] = ""; });
+
+      container.innerHTML =
+        `<span class="filtros-label">Filtrar por:</span>` +
+        atributos.map((attr) => {
+          const opcoes = Array.from(mapaFiltros[attr]).sort((a, b) => a.localeCompare(b, "pt-BR"));
+          return `<label class="filtro-attr">
+            <span>${escapeHtml(attr)}:</span>
+            <select data-filtro="${escapeHtml(attr)}" onchange="aplicarFiltrosCatalogo()">
+              <option value="">Todos</option>
+              ${opcoes.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("")}
+            </select>
+          </label>`;
+        }).join("") +
+        `<button class="limpar-filtros-btn" onclick="limparFiltrosCatalogo()">Limpar filtros</button>`;
+
+      container.classList.remove("hidden");
+    }
+
+    function aplicarFiltrosCatalogo() {
+      const container = document.getElementById("filtrosItens");
+      const lista = document.getElementById("listaItens");
+      const countEl = document.getElementById("countItens");
+      if (!container || !lista) return;
+
+      container.querySelectorAll("select[data-filtro]").forEach((sel) => {
+        filtrosCatalogoAtivos[sel.dataset.filtro] = sel.value;
+      });
+
+      const filtrosAtivos = Object.entries(filtrosCatalogoAtivos).filter(([, v]) => v);
+
+      const itensFiltrados = filtrosAtivos.length === 0
+        ? itensCatalogoOriginais
+        : itensCatalogoOriginais.filter((item) => {
+            if (item.diretoPncp) return true;
+            const attrs = extrairAtributosDescricao(item.descricao);
+            return filtrosAtivos.every(([chave, valor]) => attrs[chave] === valor);
+          });
+
+      renderizarListaItens(itensFiltrados, lista);
+
+      if (countEl) {
+        const totalFiltravelis = itensCatalogoOriginais.filter((i) => !i.diretoPncp).length;
+        const exibindo = itensFiltrados.filter((i) => !i.diretoPncp).length;
+        if (filtrosAtivos.length && exibindo < totalFiltravelis) {
+          countEl.textContent = `Exibindo ${exibindo} de ${totalFiltravelis} itens`;
+          countEl.classList.remove("hidden");
+        } else {
+          countEl.classList.add("hidden");
+        }
+      }
+    }
+
+    function limparFiltrosCatalogo() {
+      const container = document.getElementById("filtrosItens");
+      if (!container) return;
+      container.querySelectorAll("select[data-filtro]").forEach((sel) => { sel.value = ""; });
+      Object.keys(filtrosCatalogoAtivos).forEach((k) => { filtrosCatalogoAtivos[k] = ""; });
+      aplicarFiltrosCatalogo();
+    }
+
+    function renderizarItensEncontrados(dados, lista) {
+      lista.innerHTML = "";
+      itensCatalogoOriginais = ordenarPncpDiretoPorUltimo(dados.itens || []);
+      filtrosCatalogoAtivos = {};
+
+      const countEl = document.getElementById("countItens");
+      if (countEl) countEl.classList.add("hidden");
+
+      renderizarFiltrosCatalogo(itensCatalogoOriginais);
+      renderizarListaItens(itensCatalogoOriginais, lista);
       document.getElementById("cardItens").classList.remove("hidden");
     }
 
