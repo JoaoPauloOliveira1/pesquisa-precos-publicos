@@ -35,6 +35,18 @@ const PE_INTEGRADO_ARP_BASE = "https://www.peintegrado.pe.gov.br/Portal/Pages/At
 const SINAPI_API_URL = process.env.SINAPI_API_URL || "";
 const SINAPI_API_KEY = process.env.SINAPI_API_KEY || "";
 const SINAPI_CHAVE_CONFIGURADA = Boolean(SINAPI_API_KEY);
+const UFS_BRASIL = [
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS",
+  "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC",
+  "SP", "SE", "TO",
+];
+const REGIOES_UF = {
+  AC: "Norte", AL: "Nordeste", AP: "Norte", AM: "Norte", BA: "Nordeste", CE: "Nordeste",
+  DF: "Centro-Oeste", ES: "Sudeste", GO: "Centro-Oeste", MA: "Nordeste", MT: "Centro-Oeste",
+  MS: "Centro-Oeste", MG: "Sudeste", PA: "Norte", PB: "Nordeste", PR: "Sul", PE: "Nordeste",
+  PI: "Nordeste", RJ: "Sudeste", RN: "Nordeste", RS: "Sul", RO: "Norte", RR: "Norte",
+  SC: "Sul", SP: "Sudeste", SE: "Nordeste", TO: "Norte",
+};
 const DEBUG_LOGS = process.env.DEBUG_LOGS === "1";
 const IS_RENDER = process.env.RENDER === "true";
 const CURL_BIN = process.platform === "win32" ? "curl.exe" : "curl";
@@ -994,6 +1006,99 @@ function resumirTextoBuscaSinapi(texto) {
   return palavras.slice(0, 6).join(" ") || normalizado;
 }
 
+let cacheStatusSinapi = {
+  valor: null,
+  expiracao: 0,
+};
+
+function extrairListaSinapi(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  if (Array.isArray(payload.registros)) return payload.registros;
+  if (Array.isArray(payload.items)) return payload.items;
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.resultados)) return payload.resultados;
+  return [];
+}
+
+function lerValorSinapi(item, campos) {
+  for (const campo of campos) {
+    if (item?.[campo] !== undefined && item?.[campo] !== null && item?.[campo] !== "") {
+      return item[campo];
+    }
+  }
+  return "";
+}
+
+function normalizarItemSinapi(item, tipoSinapi, parametros) {
+  const precoCampos =
+    tipoSinapi === "Composição"
+      ? ["custo_total", "custoTotal", "preco_mediano", "precoMediano", "precoUnitario", "preco_unitario", "valor"]
+      : ["preco_mediano", "precoMediano", "precoUnitario", "preco_unitario", "valor", "custo_total", "custoTotal"];
+
+  return {
+    origem: "SINAPI",
+    tipoSinapi,
+    codigo: lerValorSinapi(item, ["codigo", "cod", "id"]),
+    descricao: lerValorSinapi(item, ["descricao", "nome", "titulo"]),
+    unidade: lerValorSinapi(item, ["unidade", "sigla_unidade", "siglaUnidade"]),
+    precoUnitario: lerValorSinapi(item, precoCampos),
+    dataReferencia: lerValorSinapi(item, ["data_referencia", "dataReferencia"]) || parametros.data_referencia,
+    uf: lerValorSinapi(item, ["uf"]) || parametros.uf,
+    regime: lerValorSinapi(item, ["regime"]) || parametros.regime,
+    regiao: REGIOES_UF[lerValorSinapi(item, ["uf"]) || parametros.uf] || "",
+  };
+}
+
+function extrairReferenciaStatusSinapi(payload) {
+  if (!payload || typeof payload !== "object") return "";
+
+  const candidatas = [
+    payload?.ultima_referencia_publicada,
+    payload?.referenciaAtual?.data_referencia,
+    payload?.banco?.referenciaAtual?.data_referencia,
+    payload?.referencia_atual,
+    payload?.data_referencia,
+  ];
+
+  const referencia = candidatas.find((item) => /^\d{4}-\d{2}$/.test(String(item || "")));
+  return referencia ? String(referencia) : "";
+}
+
+async function obterDataReferenciaSinapiMaisAtual() {
+  const agora = Date.now();
+  if (cacheStatusSinapi.valor && cacheStatusSinapi.expiracao > agora) {
+    return cacheStatusSinapi.valor;
+  }
+
+  if (!SINAPI_API_URL) {
+    return dataReferenciaPadrao();
+  }
+
+  try {
+    const url = new URL(`${SINAPI_API_URL.replace(/\/+$/, "")}/status`);
+    const status = await consultarSinapiJson(url, 15000);
+    const referencia = extrairReferenciaStatusSinapi(status) || dataReferenciaPadrao();
+    cacheStatusSinapi = {
+      valor: referencia,
+      expiracao: agora + 6 * 60 * 60 * 1000,
+    };
+    return referencia;
+  } catch (_error) {
+    return dataReferenciaPadrao();
+  }
+}
+
+async function executarEmLotes(itens, tamanhoLote, handler) {
+  const resultados = [];
+  for (let i = 0; i < itens.length; i += tamanhoLote) {
+    const lote = itens.slice(i, i + tamanhoLote);
+    const respostas = await Promise.all(lote.map(handler));
+    resultados.push(...respostas);
+  }
+  return resultados;
+}
+
 async function consultarPncpJson(url, timeoutMs = 15000) {
   debugLog("Consultando PNCP:", url.toString());
 
@@ -1734,65 +1839,67 @@ async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime }) {
   }
 
   const base = SINAPI_API_URL.replace(/\/+$/, "");
-  const parametros = {
-    q: termoBusca,
-    uf: String(uf || "PB").toUpperCase(),
-    data_referencia: normalizarDataReferenciaSinapi(dataReferencia),
-    regime: regime || "NAO_DESONERADO",
-    skip: "0",
-    limit: "50",
-  };
+  const referenciaMaisAtual = await obterDataReferenciaSinapiMaisAtual();
+  const estados = UFS_BRASIL;
+  const regimes = ["NAO_DESONERADO", "DESONERADO"];
 
   try {
-    const [insumosRaw, composicoesRaw] = await Promise.all([
-      (async () => {
-        const url = new URL(`${base}/insumos/`);
-        Object.entries(parametros).forEach(([chave, valor]) => url.searchParams.set(chave, valor));
-        return consultarSinapiJson(url);
-      })(),
-      (async () => {
-        const url = new URL(`${base}/composicoes/`);
-        Object.entries(parametros).forEach(([chave, valor]) => url.searchParams.set(chave, valor));
-        return consultarSinapiJson(url);
-      })(),
-    ]);
+    const contextos = [];
+    estados.forEach((ufAtual) => {
+      regimes.forEach((regimeAtual) => {
+        contextos.push({
+          q: termoBusca,
+          uf: ufAtual,
+          data_referencia: referenciaMaisAtual || normalizarDataReferenciaSinapi(dataReferencia),
+          regime: regimeAtual,
+          skip: "0",
+          limit: "20",
+        });
+      });
+    });
 
-    const insumos = Array.isArray(insumosRaw) ? insumosRaw : [];
-    const composicoes = Array.isArray(composicoesRaw) ? composicoesRaw : [];
+    const respostas = await executarEmLotes(contextos, 4, async (parametros) => {
+      const [insumosRaw, composicoesRaw] = await Promise.all([
+        (async () => {
+          const url = new URL(`${base}/insumos`);
+          Object.entries(parametros).forEach(([chave, valor]) => url.searchParams.set(chave, valor));
+          return consultarSinapiJson(url);
+        })(),
+        (async () => {
+          const url = new URL(`${base}/composicoes`);
+          Object.entries(parametros).forEach(([chave, valor]) => url.searchParams.set(chave, valor));
+          return consultarSinapiJson(url);
+        })(),
+      ]);
 
-    const registros = [
-      ...insumos.map((item) => ({
-        origem: "SINAPI",
-        tipoSinapi: "Insumo",
-        codigo: item.codigo,
-        descricao: item.descricao,
-        unidade: item.unidade,
-        precoUnitario: item.preco_mediano,
-        dataReferencia: parametros.data_referencia,
-        uf: parametros.uf,
-        regime: parametros.regime,
-      })),
-      ...composicoes.map((item) => ({
-        origem: "SINAPI",
-        tipoSinapi: "Composição",
-        codigo: item.codigo,
-        descricao: item.descricao,
-        unidade: item.unidade,
-        precoUnitario: item.custo_total,
-        dataReferencia: parametros.data_referencia,
-        uf: parametros.uf,
-        regime: parametros.regime,
-      })),
-    ].filter((item) => {
+      const insumos = extrairListaSinapi(insumosRaw).map((item) => normalizarItemSinapi(item, "Insumo", parametros));
+      const composicoes = extrairListaSinapi(composicoesRaw).map((item) => normalizarItemSinapi(item, "Composicao", parametros));
+      return [...insumos, ...composicoes];
+    });
+
+    const registros = respostas.flat().filter((item) => {
       const valor = normalizarValor(item.precoUnitario);
       return !Number.isNaN(valor) && valor > 0;
+    });
+
+    const vistos = new Set();
+    const registrosUnicos = registros.filter((item) => {
+      const chave = [item.tipoSinapi, item.codigo, item.uf, item.dataReferencia, item.regime].join("|");
+      if (vistos.has(chave)) return false;
+      vistos.add(chave);
+      return true;
     });
 
     return {
       configurado: true,
       erro: "",
       termoBusca,
-      registros: registros.sort((a, b) => normalizarValor(a.precoUnitario) - normalizarValor(b.precoUnitario)),
+      referenciaUsada: referenciaMaisAtual,
+      escopo: {
+        ufs: "todas",
+        regimes: "ambos",
+      },
+      registros: registrosUnicos.sort((a, b) => normalizarValor(a.precoUnitario) - normalizarValor(b.precoUnitario)),
     };
   } catch (error) {
     return {
