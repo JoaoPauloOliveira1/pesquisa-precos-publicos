@@ -1018,6 +1018,9 @@ function extrairListaSinapi(payload) {
   if (Array.isArray(payload.items)) return payload.items;
   if (Array.isArray(payload.data)) return payload.data;
   if (Array.isArray(payload.resultados)) return payload.resultados;
+  if (Array.isArray(payload.insumos)) return payload.insumos;
+  if (Array.isArray(payload.composicoes)) return payload.composicoes;
+  if (Array.isArray(payload.rows)) return payload.rows;
   return [];
 }
 
@@ -1837,8 +1840,9 @@ async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime, tipo =
     };
   }
 
-  const termoBusca = resumirTextoBuscaSinapi(termo);
-  if (!termoBusca || termoBusca.length < 3) {
+  const termoOriginal = String(termo || "").trim();
+  const termoBuscaResumido = resumirTextoBuscaSinapi(termoOriginal);
+  if ((!termoOriginal || termoOriginal.length < 3) && (!termoBuscaResumido || termoBuscaResumido.length < 3)) {
     return {
       configurado: true,
       erro: "",
@@ -1853,12 +1857,12 @@ async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime, tipo =
   const incluirInsumos = tipo !== "composicao";
   const incluirComposicoes = tipo !== "item";
 
-  try {
+  async function consultarPorTermo(q) {
     const contextos = [];
     estados.forEach((ufAtual) => {
       regimes.forEach((regimeAtual) => {
         contextos.push({
-          q: termoBusca,
+          q,
           uf: ufAtual,
           data_referencia: referenciaMaisAtual || normalizarDataReferenciaSinapi(dataReferencia),
           regime: regimeAtual,
@@ -1889,10 +1893,17 @@ async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime, tipo =
       return [...insumos, ...composicoes];
     });
 
-    const registros = respostas.flat().filter((item) => {
+    return respostas.flat().filter((item) => {
       const valor = normalizarValor(item.precoUnitario);
       return !Number.isNaN(valor) && valor > 0;
     });
+  }
+
+  try {
+    let registros = await consultarPorTermo(termoOriginal);
+    if (!registros.length && termoBuscaResumido && termoBuscaResumido !== termoOriginal) {
+      registros = await consultarPorTermo(termoBuscaResumido);
+    }
 
     const vistos = new Set();
     const registrosUnicos = registros.filter((item) => {
@@ -1905,7 +1916,7 @@ async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime, tipo =
     return {
       configurado: true,
       erro: "",
-      termoBusca,
+      termoBusca: registrosUnicos.length ? termoOriginal || termoBuscaResumido : termoBuscaResumido || termoOriginal,
       referenciaUsada: referenciaMaisAtual,
       escopo: {
         ufs: "todas",
