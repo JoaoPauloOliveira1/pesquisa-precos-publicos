@@ -1009,6 +1009,42 @@
     .fonte-bloco:hover { box-shadow: var(--shadow-sm); }
     .fonte-bloco:first-child { margin-top: 0; }
 
+    .paginacao-fonte {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 12px 0 2px;
+      margin-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .paginacao-fonte span {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      min-width: 70px;
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+    .paginacao-fonte button {
+      min-height: 32px;
+      padding: 0 14px;
+      border-radius: 8px;
+      background: var(--surface, #fff);
+      border: 1px solid var(--fonte-border, #d2d2d7);
+      color: var(--fonte-accent, #555);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--t);
+    }
+    .paginacao-fonte button:hover:not(:disabled) {
+      background: var(--fonte-bg, #f5f5f7);
+      box-shadow: var(--shadow-sm);
+    }
+    .paginacao-fonte button:active:not(:disabled) { transform: scale(0.97); }
+    .paginacao-fonte button:disabled { opacity: 0.32; cursor: default; }
+
     .fonte-bloco.fonte-pncp, .resultado.fonte-pncp, .carrinho-item.fonte-pncp
       { --fonte-accent:var(--emlurb-blue); --fonte-border:#b8d6ee; --fonte-bg:var(--emlurb-blue-soft); --fonte-text:var(--emlurb-blue-dark); }
     .fonte-bloco.fonte-sinapi, .resultado.fonte-sinapi, .carrinho-item.fonte-sinapi
@@ -1514,6 +1550,8 @@
     let registrosSinapiAtuais = [];
     let registrosFontesAtuais = [];
     let estadoFontesConsulta = {};
+    let paginasFonte = {};
+    const ITENS_POR_PAGINA = 10;
     let itemAtual = null;
     let carrinho = [];
     let buscaEmAndamento = false;
@@ -2269,6 +2307,7 @@
       if (!somenteFontesDiretas) registrosAtuais = [];
       registrosSinapiAtuais = [];
       registrosFontesAtuais = [];
+      paginasFonte = {};
       estadoFontesConsulta = somenteFontesDiretas && fontesAtivas.pncp ? { ...estadoFontesConsulta } : {};
       if (!somenteFontesDiretas) avisoPncpAtual = "";
       if (bloquearConsulta) {
@@ -2537,18 +2576,55 @@
       return "";
     }
 
+    function fonteChaveDeOrigem(origem) {
+      const n = (origem || "").toLowerCase().replace(/[\s\-_]/g, "");
+      if (n.includes("pncp")) return "pncp";
+      if (n.includes("sinapi")) return "sinapi";
+      if (n.includes("sicro")) return "sicro";
+      if (n.includes("orse")) return "orse";
+      if (n.includes("peintegrado") || n.includes("pe integrado")) return "peintegrado";
+      return n;
+    }
+
+    function navegarPaginaFonte(chave, delta) {
+      let total = 0;
+      if (chave === "pncp") total = registrosAtuais.length;
+      else if (chave === "sinapi") total = filtrarSinapiPorRegiao(registrosSinapiAtuais).length;
+      else total = registrosFontesAtuais.filter(r => fonteChaveDeOrigem(r.origem) === chave).length;
+
+      const totalPaginas = Math.max(1, Math.ceil(total / ITENS_POR_PAGINA));
+      const atual = paginasFonte[chave] || 0;
+      paginasFonte[chave] = Math.max(0, Math.min(totalPaginas - 1, atual + delta));
+      montarResultados();
+    }
+
     function montarBlocoFonte(fonte, origem, registros) {
       const estadoHtml = mensagemEstadoFonte(fonte);
+      const total = registros.length;
+      const pagina = paginasFonte[fonte] || 0;
+      const inicio = pagina * ITENS_POR_PAGINA;
+      const fim = inicio + ITENS_POR_PAGINA;
+      const paginados = registros.slice(inicio, fim);
+      const totalPaginas = Math.ceil(total / ITENS_POR_PAGINA);
+
+      const paginacaoHtml = totalPaginas > 1 ? `
+        <div class="paginacao-fonte">
+          <button type="button" onclick="navegarPaginaFonte('${fonte}', -1)" ${pagina === 0 ? "disabled" : ""}>‹ Anterior</button>
+          <span>${pagina + 1} de ${totalPaginas}</span>
+          <button type="button" onclick="navegarPaginaFonte('${fonte}', 1)" ${pagina >= totalPaginas - 1 ? "disabled" : ""}>Próximo ›</button>
+        </div>
+      ` : "";
 
       return `
         <div class="fonte-bloco ${classeFonteId(fonte) || classeFonte(origem)}">
           <div class="fonte-titulo">
             <h3>${escapeHtml(origem)}</h3>
-            <span class="badge fonte-badge">${registros.length} registro(s)</span>
+            <span class="badge fonte-badge">${total} registro(s)</span>
           </div>
           <div class="resultado-lista">
-            ${registros.length ? registros.slice(0, 100).map(montarCardResultado).join("") : estadoHtml || "<p class='empty'>Nenhum preço encontrado nesta fonte.</p>"}
+            ${paginados.length ? paginados.map(montarCardResultado).join("") : estadoHtml || "<p class='empty'>Nenhum preço encontrado nesta fonte.</p>"}
           </div>
+          ${paginacaoHtml}
         </div>
       `;
     }
@@ -2605,17 +2681,9 @@
         return acc;
       }, {});
 
-      const blocosAdicionais = Object.entries(gruposAdicionais).map(([origem, registros]) => `
-        <div class="fonte-bloco ${classeFonte(origem)}">
-          <div class="fonte-titulo">
-            <h3>${escapeHtml(origem)}</h3>
-            <span class="badge fonte-badge">${registros.length} registro(s)</span>
-          </div>
-          <div class="resultado-lista">
-            ${registros.slice(0, 100).map(montarCardResultado).join("")}
-          </div>
-        </div>
-      `).join("");
+      const blocosAdicionais = Object.entries(gruposAdicionais)
+        .map(([origem, registros]) => montarBlocoFonte(fonteChaveDeOrigem(origem), origem, registros))
+        .join("");
 
       const fontesExtrasSemResultado = Object.entries(fontesAtivas)
         .filter(([fonte, ativo]) => ativo && fonte !== "pncp" && fonte !== "sinapi")
