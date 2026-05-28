@@ -3768,7 +3768,7 @@ app.get("/api/precos", async (req, res) => {
 app.get("/api/precos-fonte", async (req, res) => {
   const fonteId = String(req.query.fonte || "").trim().toLowerCase();
   const termo = req.query.termo || req.query.codigo || "";
-  const uf = req.query.sinapiUf || "PB";
+  const uf = req.query.sinapiUf || "BR";
   const periodoMeses = normalizarPeriodoMeses(req.query.periodoMeses);
 
   try {
