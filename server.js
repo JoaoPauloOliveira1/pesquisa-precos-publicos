@@ -1831,7 +1831,7 @@ async function enriquecerRegistrosComPncp(registros, limite = 150) {
   return enriquecidos;
 }
 
-async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime, tipo = "ambos" }) {
+async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime, tipo = "ambos", debug = false }) {
   if (!SINAPI_HABILITADO) {
     return {
       configurado: Boolean(SINAPI_API_URL),
@@ -1859,6 +1859,7 @@ async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime, tipo =
   const consultarTodasUfs = !ufNormalizada || ufNormalizada === "BR" || ufNormalizada === "TODAS";
   const incluirInsumos = tipo !== "composicao";
   const incluirComposicoes = tipo !== "item";
+  const debugConsultas = [];
 
   async function consultarPorTermo(q) {
     const contexto = {
@@ -1890,6 +1891,16 @@ async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime, tipo =
 
       const insumos = extrairListaSinapi(insumosRaw).map((item) => normalizarItemSinapi(item, "Insumo", parametros));
       const composicoes = extrairListaSinapi(composicoesRaw).map((item) => normalizarItemSinapi(item, "Composicao", parametros));
+      if (debug) {
+        debugConsultas.push({
+          parametros,
+          insumosRawCount: extrairListaSinapi(insumosRaw).length,
+          composicoesRawCount: extrairListaSinapi(composicoesRaw).length,
+          primeiroInsumoRaw: extrairListaSinapi(insumosRaw)[0] || null,
+          primeiroInsumoNormalizado: insumos[0] || null,
+          primeiroValorNormalizado: insumos[0] ? normalizarValor(insumos[0].precoUnitario) : null,
+        });
+      }
       return [...insumos, ...composicoes];
     });
 
@@ -1923,6 +1934,7 @@ async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime, tipo =
         regimes: "ambos",
         tipo,
       },
+      ...(debug ? { debug: debugConsultas } : {}),
       registros: registrosUnicos.sort((a, b) => normalizarValor(a.precoUnitario) - normalizarValor(b.precoUnitario)),
     };
   } catch (error) {
@@ -3773,6 +3785,7 @@ app.get("/api/precos-fonte", async (req, res) => {
         dataReferencia: req.query.sinapiDataReferencia || dataReferenciaPadrao(),
         regime: req.query.sinapiRegime || "NAO_DESONERADO",
         tipo: req.query.sinapiTipo || "ambos",
+        debug: req.query.debugSinapi === "1",
       }));
     }
 
