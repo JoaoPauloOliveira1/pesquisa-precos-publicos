@@ -917,9 +917,9 @@ function timestampRegistro(registro) {
 }
 
 function normalizarPeriodoMeses(valor) {
-  const meses = Number(valor || 6);
-  if (!Number.isFinite(meses) || meses <= 0) return 6;
-  return Math.min(Math.floor(meses), 6);
+  const meses = Number(valor || 12);
+  if (!Number.isFinite(meses) || meses <= 0) return 12;
+  return Math.min(Math.floor(meses), 24);
 }
 
 function normalizarLimiteItens(valor) {

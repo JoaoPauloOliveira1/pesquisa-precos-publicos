@@ -836,6 +836,27 @@
       background: rgba(239,246,255,0.85);
     }
 
+    .item.sem-historico {
+      border-color: rgba(220,38,38,0.22);
+      background: rgba(254,242,242,0.65);
+    }
+    .item.sem-historico:hover {
+      background: rgba(254,226,226,0.85);
+      border-color: rgba(220,38,38,0.38);
+      box-shadow: var(--shadow-sm);
+    }
+    .item.sem-historico .codigo {
+      color: #dc2626;
+    }
+    .item.sem-historico button {
+      background: rgba(220,38,38,0.06);
+      border-color: rgba(220,38,38,0.28);
+      color: #dc2626;
+    }
+    .item.sem-historico button:hover {
+      background: rgba(220,38,38,0.13);
+    }
+
     .codigo {
       font-weight: 700;
       font-size: 13px;
@@ -1436,11 +1457,11 @@
               Período PNCP
               <select id="periodoMeses">
                 <option value="1">Último mês</option>
-                <option value="2">Últimos 2 meses</option>
                 <option value="3">Últimos 3 meses</option>
-                <option value="4">Últimos 4 meses</option>
-                <option value="5">Últimos 5 meses</option>
-                <option value="6" selected>Últimos 6 meses</option>
+                <option value="6">Últimos 6 meses</option>
+                <option value="12" selected>Último ano</option>
+                <option value="18">Últimos 18 meses</option>
+                <option value="24">Últimos 2 anos</option>
               </select>
             </label>
 
@@ -2473,6 +2494,11 @@
         }
         if (bloquearConsulta && !buscaEmAndamento) {
           setButtonLoading(botao, false, textoCarregandoBotao, textoNormalBotao);
+        }
+        const itemDiv = botao?.closest?.(".item");
+        if (itemDiv) {
+          const totalResultados = registrosAtuais.length + registrosSinapiAtuais.length + registrosFontesAtuais.length;
+          itemDiv.classList.toggle("sem-historico", totalResultados === 0);
         }
       }
 
