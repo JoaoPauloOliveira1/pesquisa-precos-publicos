@@ -1852,27 +1852,24 @@ async function consultarPrecosSinapi({ termo, uf, dataReferencia, regime, tipo =
 
   const base = SINAPI_API_URL.replace(/\/+$/, "");
   const referenciaMaisAtual = await obterDataReferenciaSinapiMaisAtual();
-  const estados = UFS_BRASIL;
-  const regimes = ["NAO_DESONERADO", "DESONERADO"];
+  const ufNormalizada = String(uf || "").trim().toUpperCase();
+  const consultarTodasUfs = !ufNormalizada || ufNormalizada === "BR" || ufNormalizada === "TODAS";
   const incluirInsumos = tipo !== "composicao";
   const incluirComposicoes = tipo !== "item";
 
   async function consultarPorTermo(q) {
-    const contextos = [];
-    estados.forEach((ufAtual) => {
-      regimes.forEach((regimeAtual) => {
-        contextos.push({
-          q,
-          uf: ufAtual,
-          data_referencia: referenciaMaisAtual || normalizarDataReferenciaSinapi(dataReferencia),
-          regime: regimeAtual,
-          skip: "0",
-          limit: "20",
-        });
-      });
-    });
+    const contexto = {
+      q,
+      referencia: referenciaMaisAtual || normalizarDataReferenciaSinapi(dataReferencia),
+      offset: "0",
+      limit: "100",
+    };
 
-    const respostas = await executarEmLotes(contextos, 4, async (parametros) => {
+    if (!consultarTodasUfs) {
+      contexto.uf = ufNormalizada;
+    }
+
+    const respostas = await executarEmLotes([contexto], 1, async (parametros) => {
       const [insumosRaw, composicoesRaw] = await Promise.all([
         (async () => {
           if (!incluirInsumos) return [];
