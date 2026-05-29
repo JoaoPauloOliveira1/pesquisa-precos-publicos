@@ -7,6 +7,12 @@ const { execFile } = require("child_process");
 const XLSX = require("xlsx");
 const sevenZip = require("7zip-bin");
 
+// Dependências opcionais (instale com: npm install multer exceljs)
+let multerLib = null;
+let ExcelJS = null;
+try { multerLib = require("multer"); } catch {}
+try { ExcelJS = require("exceljs"); } catch {}
+
 const envPath = path.join(__dirname, ".env");
 if (fs.existsSync(envPath)) {
   for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
@@ -4199,6 +4205,226 @@ app.get("/api/health", (req, res) => {
       peIntegrado: true,
     },
   });
+});
+
+// ─── EXPORTAR COTAÇÕES C ──────────────────────────────────────────────────────
+app.post("/api/exportar-cotacoes-c", async (req, res) => {
+  if (!multerLib || !ExcelJS) {
+    return res.status(503).json({ erro: "Dependências não instaladas. Execute: npm install multer exceljs" });
+  }
+
+  // Processar upload multipart
+  const upload = multerLib({
+    storage: multerLib.memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024 },
+  }).single("planilha");
+
+  try {
+    await new Promise((resolve, reject) => upload(req, res, (err) => (err ? reject(err) : resolve())));
+  } catch (err) {
+    return res.status(400).json({ erro: `Erro no upload: ${err.message}` });
+  }
+
+  if (!req.file) return res.status(400).json({ erro: "Nenhuma planilha enviada." });
+
+  let itens;
+  try {
+    itens = JSON.parse(req.body.itens || "[]");
+  } catch {
+    return res.status(400).json({ erro: "JSON de itens inválido." });
+  }
+  if (!itens.length) return res.status(400).json({ erro: "Selecione ao menos um preço." });
+
+  try {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(req.file.buffer);
+
+    // Detectar aba: prioriza "COTAÇÕES C", depois qualquer aba com header ITEM
+    let sheet = workbook.getWorksheet("COTAÇÕES C");
+    if (!sheet) {
+      for (const ws of workbook.worksheets) {
+        let achou = false;
+        ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
+          if (rowNum > 25 || achou) return;
+          if (String(row.getCell(1).value || "").toUpperCase().trim() === "ITEM") achou = true;
+        });
+        if (achou) { sheet = ws; break; }
+      }
+    }
+    if (!sheet) {
+      return res.status(400).json({
+        erro: 'Aba de cotações não encontrada. A planilha deve ter uma aba "COTAÇÕES C" ou uma aba com a estrutura de blocos ITEM.',
+      });
+    }
+
+    // Descobrir última linha de cabeçalho de bloco (coluna A = 'ITEM')
+    let ultimaLinhaHeader = 6;
+    sheet.eachRow({ includeEmpty: false }, (row, rowNum) => {
+      if (rowNum < 7) return;
+      if (String(row.getCell(1).value || "").toUpperCase().trim() === "ITEM") ultimaLinhaHeader = rowNum;
+    });
+
+    // Número do último item (row +4 do último bloco)
+    const ultimoN = (() => {
+      const v = sheet.getRow(ultimaLinhaHeader + 4).getCell(1).value;
+      return typeof v === "number" ? v : 0;
+    })();
+
+    // Se template está vazio (ultimoN=0), reutiliza o bloco de cabeçalho já existente
+    let proximaLinha = ultimoN === 0 ? ultimaLinhaHeader : ultimaLinhaHeader + 8;
+    let proximoN = ultimoN + 1;
+
+    // Mapear origem → coluna
+    function origemParaColuna(origem) {
+      if (!origem) return 8;
+      const o = origem.toUpperCase();
+      if (o.includes("SINAPI")) return 6;   // F
+      if (o.includes("ORSE")) return 7;     // G
+      if (o.includes("PNCP")) return 8;     // H
+      if (o.includes("SICRO")) return 9;    // I
+      if (o.includes("PE INTEGRADO") || o.includes("PEINTEGRADO")) return 10; // J
+      return 8;
+    }
+
+    // Agrupar por código de catálogo (fontes diferentes → mesmo bloco)
+    const grupos = [];
+    const codigoMap = new Map();
+    itens.forEach((item) => {
+      const key = item.codigo;
+      if (key) {
+        if (!codigoMap.has(key)) {
+          const g = { key, items: [] };
+          codigoMap.set(key, g);
+          grupos.push(g);
+        }
+        const g = codigoMap.get(key);
+        // Se a mesma fonte já está no grupo, criar novo bloco
+        if (g.items.some((i) => origemParaColuna(i.origem) === origemParaColuna(item.origem))) {
+          grupos.push({ key: null, items: [item] });
+        } else {
+          g.items.push(item);
+        }
+      } else {
+        grupos.push({ key: null, items: [item] });
+      }
+    });
+
+    // Clonar estilo de célula
+    function clonarEstilo(cell) {
+      try { return JSON.parse(JSON.stringify(cell.style || {})); } catch { return {}; }
+    }
+
+    // Detectar primeira linha de bloco (para copiar estilos de cabeçalho)
+    let primeiraLinhaHeader = -1;
+    sheet.eachRow({ includeEmpty: false }, (row, rowNum) => {
+      if (rowNum < 7 || primeiraLinhaHeader !== -1) return;
+      if (String(row.getCell(1).value || "").toUpperCase().trim() === "ITEM") primeiraLinhaHeader = rowNum;
+    });
+    if (primeiraLinhaHeader === -1) primeiraLinhaHeader = 7;
+    const TEMPLATE_START = primeiraLinhaHeader;
+
+    // Estilo de cabeçalho (cinza + bold + centralizado) — aplicado quando o template está vazio
+    const estiloHeader = {
+      font: { bold: true, size: 10, name: "Arial" },
+      fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFD8D8D8" } },
+      alignment: { horizontal: "center", vertical: "middle", wrapText: true },
+      border: {
+        top: { style: "thin" }, bottom: { style: "thin" },
+        left: { style: "thin" }, right: { style: "thin" },
+      },
+    };
+
+    for (const grupo of grupos) {
+      const items = grupo.items;
+      const item0 = items[0];
+      const R = proximaLinha;
+
+      // Fontes por coluna
+      const fontesPorCol = {};
+      items.forEach((item) => {
+        const col = origemParaColuna(item.origem);
+        if (!fontesPorCol[col]) fontesPorCol[col] = item;
+      });
+
+      const precos = Object.values(fontesPorCol)
+        .map((f) => (typeof f.precoUnitario === "number" ? f.precoUnitario : null))
+        .filter((p) => p !== null && p > 0);
+      const media = precos.length ? precos.reduce((a, b) => a + b, 0) / precos.length : null;
+
+      // Copiar estilos do bloco template (linhas +0 a +3 = cabeçalhos)
+      for (let offset = 0; offset < 4; offset++) {
+        const tRow = sheet.getRow(TEMPLATE_START + offset);
+        const nRow = sheet.getRow(R + offset);
+        if (tRow.height) nRow.height = tRow.height;
+        let temEstilo = false;
+        tRow.eachCell({ includeEmpty: true }, (cell, colNum) => {
+          const estilo = clonarEstilo(cell);
+          if (Object.keys(estilo).length) { nRow.getCell(colNum).style = estilo; temEstilo = true; }
+        });
+        // Se o template não tinha estilos (arquivo vazio), aplicar estilo padrão
+        if (!temEstilo) {
+          for (let c = 1; c <= 10; c++) nRow.getCell(c).style = { ...estiloHeader };
+        }
+      }
+
+      const set = (row, col, val) => sheet.getRow(row).getCell(col).value = val;
+
+      // Linha +0: cabeçalhos de coluna
+      set(R, 1, "ITEM"); set(R, 2, "CÓDIGO"); set(R, 3, "ESPECIFICAÇÃO");
+      set(R, 4, "ORÇAMENTO"); set(R, 6, "COTAÇÕES");
+
+      // Linha +1: nomes das fontes
+      set(R + 1, 4, "MÉDIA GERAL");
+      Object.entries(fontesPorCol).forEach(([col, item]) => set(R + 1, Number(col), item.origem));
+
+      // Linha +2: referências
+      Object.entries(fontesPorCol).forEach(([col, item]) =>
+        set(R + 2, Number(col), item.referencia || item.licitacao || "")
+      );
+
+      // Linha +3: sub-cabeçalhos de valor
+      set(R + 3, 4, "UNID"); set(R + 3, 5, "VALOR");
+      set(R + 3, 6, "VALOR UNITÁRIO"); set(R + 3, 7, "VALOR UNITÁRIO"); set(R + 3, 8, "VALOR UNITÁRIO");
+
+      // Linha +4: dados do item
+      set(R + 4, 1, proximoN);
+      set(R + 4, 2, `COT${proximoN}`);
+      set(R + 4, 3, item0.descricao || "");
+      set(R + 4, 4, item0.unidade || "");
+      if (media !== null) set(R + 4, 5, media);
+      Object.entries(fontesPorCol).forEach(([col, item]) => {
+        if (typeof item.precoUnitario === "number") set(R + 4, Number(col), item.precoUnitario);
+      });
+
+      // Linhas +5/+6/+7: notas de rodapé por fonte
+      let notaOffset = 5;
+      Object.entries(fontesPorCol).forEach(([, item]) => {
+        if (notaOffset > 7) return;
+        const preco = typeof item.precoUnitario === "number"
+          ? `R$ ${item.precoUnitario.toFixed(2).replace(".", ",")}`
+          : "";
+        const ref = item.referencia || item.licitacao || item.orgao || "";
+        const url = item.link || "";
+        let nota = `* ${item.origem}: ${preco}`;
+        if (ref) nota += ` - ${ref}`;
+        if (url) nota += ` - ${url}`;
+        set(R + notaOffset, 1, nota);
+        notaOffset++;
+      });
+
+      proximaLinha += 8;
+      proximoN++;
+    }
+
+    // Retornar arquivo modificado
+    const nomeArq = `planilha-cotacoes-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${nomeArq}"`);
+    await workbook.xlsx.write(res);
+  } catch (err) {
+    console.error("Erro ao exportar COTAÇÕES C:", err);
+    if (!res.headersSent) res.status(500).json({ erro: "Erro interno ao processar a planilha." });
+  }
 });
 
 app.listen(PORT, HOST, () => {

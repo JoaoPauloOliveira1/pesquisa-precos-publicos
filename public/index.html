@@ -1658,10 +1658,12 @@
           <div class="carrinho-head">
             <h2>4. Preços selecionados</h2>
             <div class="toolbar">
+              <button class="secondary" onclick="exportarCotacoesC(this)">Exportar para Planilha</button>
               <button class="secondary" onclick="gerarRelatorioPdf(this)">Gerar relatório PDF</button>
               <button class="danger" onclick="limparCarrinho()">Limpar seleção</button>
             </div>
           </div>
+          <input type="file" id="inputPlanilhaXlsx" accept=".xlsx" style="display:none" />
           <div id="carrinho" class="carrinho-lista">
             <p class="empty">Nenhum preço selecionado ainda.</p>
           </div>
@@ -3076,6 +3078,63 @@
       }
 
       buscarItens();
+    }
+
+    // ── Exportar para COTAÇÕES C ──────────────────────────────────────────────
+    let planilhaXlsxSelecionada = null;
+
+    function exportarCotacoesC(botao) {
+      if (!carrinho.length) {
+        alert("Selecione ao menos um preço para exportar.");
+        return;
+      }
+
+      if (!planilhaXlsxSelecionada) {
+        const input = document.getElementById("inputPlanilhaXlsx");
+        input.value = ""; // força re-seleção se necessário
+        input.onchange = () => {
+          planilhaXlsxSelecionada = input.files[0] || null;
+          if (planilhaXlsxSelecionada) exportarCotacoesC(botao);
+        };
+        input.click();
+        return;
+      }
+
+      _enviarExportacao(botao);
+    }
+
+    async function _enviarExportacao(botao) {
+      setButtonLoading(botao, true, "Exportando...", "Exportar para Planilha");
+      try {
+        const formData = new FormData();
+        formData.append("planilha", planilhaXlsxSelecionada);
+        formData.append("itens", JSON.stringify(carrinho));
+
+        const resposta = await fetch("/api/exportar-cotacoes-c", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!resposta.ok) {
+          const erro = await resposta.json().catch(() => ({}));
+          alert(erro.erro || "Erro ao exportar para planilha.");
+          return;
+        }
+
+        const blob = await resposta.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `planilha-cotacoes-${new Date().toISOString().slice(0, 10)}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert("Erro de rede ao exportar: " + err.message);
+      } finally {
+        setButtonLoading(botao, false, "Exportando...", "Exportar para Planilha");
+      }
     }
 
     setMesPadrao();
