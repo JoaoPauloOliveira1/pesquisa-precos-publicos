@@ -1079,6 +1079,27 @@
     .fonte-bloco:hover { box-shadow: var(--shadow-sm); }
     .fonte-bloco:first-child { margin-top: 0; }
 
+    .fonte-bloco.recolhido > *:not(.fonte-titulo) { display: none; }
+    .fonte-bloco.recolhido { padding-bottom: 14px; }
+
+    .btn-recolher {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border: 1.5px solid var(--fonte-border, var(--line));
+      border-radius: 8px;
+      background: transparent;
+      color: var(--fonte-text, var(--muted));
+      font-size: 11px;
+      cursor: pointer;
+      transition: background var(--t), transform var(--t);
+      flex-shrink: 0;
+    }
+    .btn-recolher:hover { background: rgba(0,0,0,0.05); }
+    .fonte-bloco.recolhido .btn-recolher { transform: rotate(180deg); }
+
     .paginacao-fonte {
       display: flex;
       align-items: center;
@@ -1448,6 +1469,46 @@
 
     .empty { color: var(--muted); font-size: 13px; margin: 0; }
 
+    .carrinho-grupo-sep {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 12px 0 4px;
+      color: var(--emlurb-green-dark);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .carrinho-grupo-sep::before, .carrinho-grupo-sep::after {
+      content: '';
+      flex: 1;
+      height: 1.5px;
+      background: var(--line);
+    }
+
+    .grupo-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .grupo-input {
+      width: 44px;
+      padding: 2px 4px;
+      border: 1.5px solid var(--line);
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      background: white;
+      color: var(--ink);
+      transition: border-color var(--t);
+    }
+    .grupo-input:focus { outline: none; border-color: var(--emlurb-green); }
+
     .footer-credit {
       margin-top: 20px;
       padding: 14px 4px 0;
@@ -1684,6 +1745,9 @@
     let codigosSemHistorico = new Set();
     let itemAtual = null;
     let carrinho = [];
+    let proximoGrupoItem = 1;
+    let ultimoCodigoConsultado = null;
+    const fontesRecolhidas = new Set();
     let buscaEmAndamento = false;
     let consultaEmAndamento = false;
     let sinapiAtivo = false;
@@ -2474,6 +2538,16 @@
       if (bloquearConsulta && consultaEmAndamento) return;
 
       itemAtual = item;
+
+      // Avança o número de item toda vez que o usuário consulta um item diferente do catálogo
+      if (!somenteFontesDiretas) {
+        const chaveItem = item.codigo || item.descricao || "";
+        if (ultimoCodigoConsultado !== null && ultimoCodigoConsultado !== chaveItem) {
+          proximoGrupoItem++;
+        }
+        ultimoCodigoConsultado = chaveItem;
+      }
+
       if (!somenteFontesDiretas) registrosAtuais = [];
       registrosSinapiAtuais = [];
       registrosFontesAtuais = [];
@@ -2814,11 +2888,18 @@
         </div>
       ` : "";
 
+      const classeBloco = classeFonteId(fonte) || classeFonte(origem);
+      const recolhido = fontesRecolhidas.has(fonte);
+
       return `
-        <div class="fonte-bloco ${classeFonteId(fonte) || classeFonte(origem)}">
+        <div class="fonte-bloco ${classeBloco}${recolhido ? " recolhido" : ""}">
           <div class="fonte-titulo">
             <h3>${escapeHtml(origem)}</h3>
-            <span class="badge fonte-badge">${total} registro(s)</span>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span class="badge fonte-badge">${total} registro(s)</span>
+              <button type="button" class="btn-recolher" title="${recolhido ? "Expandir" : "Minimizar"}"
+                onclick="recolherFonte(this,'${fonte}')">▲</button>
+            </div>
           </div>
           ${statsHtml}
           <div class="resultado-lista">
@@ -2827,6 +2908,14 @@
           ${paginacaoHtml}
         </div>
       `;
+    }
+
+    function recolherFonte(btn, fonte) {
+      const bloco = btn.closest(".fonte-bloco");
+      const recolhido = bloco.classList.toggle("recolhido");
+      if (recolhido) fontesRecolhidas.add(fonte);
+      else fontesRecolhidas.delete(fonte);
+      btn.title = recolhido ? "Expandir" : "Minimizar";
     }
 
     function deveRenderizarBlocoPncp() {
@@ -2910,7 +2999,7 @@
       if (existe) {
         carrinho = carrinho.filter((item) => idRegistro(item) !== id);
       } else {
-        carrinho.push(registro);
+        carrinho.push({ ...registro, _itemGrupo: proximoGrupoItem });
       }
 
       montarCarrinho();
@@ -2936,15 +3025,34 @@
         return;
       }
 
-      div.innerHTML = carrinho.map((item) => {
+      // Ordenar por grupo para exibir agrupado, preservando ordem de inserção dentro do grupo
+      const sorted = [...carrinho].sort((a, b) => (a._itemGrupo || 1) - (b._itemGrupo || 1));
+
+      let html = "";
+      let grupoAtual = null;
+
+      sorted.forEach((item) => {
+        const grupo = item._itemGrupo || 1;
         const id = idRegistro(item);
         const fonteClasse = classeFonte(item.origem);
-        return `
+
+        if (grupo !== grupoAtual) {
+          grupoAtual = grupo;
+          html += `<div class="carrinho-grupo-sep"><span>Item ${grupo}</span></div>`;
+        }
+
+        html += `
           <div class="carrinho-item ${fonteClasse}">
             <div>
               <div class="carrinho-titulo">
                 <span class="badge fonte-badge">${escapeHtml(item.origem)}</span>
                 <span class="badge">${escapeHtml(item.codigo ? `Código ${item.codigo}` : "Sem código")}</span>
+                <label class="grupo-label">
+                  Nº&nbsp;Item
+                  <input type="number" min="1" class="grupo-input"
+                    value="${grupo}"
+                    onchange="atualizarGrupoCarrinho('${escapeHtml(id)}', this.value)" />
+                </label>
                 <button class="subtle compact" onclick="copiarRegistro('${escapeHtml(id)}')">Copiar</button>
               </div>
               <div class="carrinho-descricao">${escapeHtml(textoCurto(item.descricao || "Item sem descrição", 160))}</div>
@@ -2962,7 +3070,19 @@
             <button class="danger compact" onclick="removerCarrinho('${escapeHtml(id)}')">Remover</button>
           </div>
         `;
-      }).join("");
+      });
+
+      div.innerHTML = html;
+    }
+
+    function atualizarGrupoCarrinho(id, novoGrupo) {
+      const n = Math.max(1, parseInt(novoGrupo, 10) || 1);
+      const idx = carrinho.findIndex((item) => idRegistro(item) === id);
+      if (idx === -1) return;
+      carrinho[idx]._itemGrupo = n;
+      // Atualizar proximoGrupoItem se necessário
+      proximoGrupoItem = Math.max(proximoGrupoItem, n);
+      montarCarrinho();
     }
 
     async function gerarRelatorioPdf(botao) {

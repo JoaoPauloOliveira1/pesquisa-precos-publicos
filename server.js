@@ -4286,26 +4286,24 @@ app.post("/api/exportar-cotacoes-c", async (req, res) => {
       return 8;
     }
 
-    // Agrupar por código de catálogo (fontes diferentes → mesmo bloco)
+    // Agrupar pelo número de item atribuído na UI (_itemGrupo), em ordem crescente
+    const itensSorted = [...itens].sort((a, b) => (a._itemGrupo || 999) - (b._itemGrupo || 999));
     const grupos = [];
-    const codigoMap = new Map();
-    itens.forEach((item) => {
-      const key = item.codigo;
-      if (key) {
-        if (!codigoMap.has(key)) {
-          const g = { key, items: [] };
-          codigoMap.set(key, g);
-          grupos.push(g);
-        }
-        const g = codigoMap.get(key);
-        // Se a mesma fonte já está no grupo, criar novo bloco
-        if (g.items.some((i) => origemParaColuna(i.origem) === origemParaColuna(item.origem))) {
-          grupos.push({ key: null, items: [item] });
-        } else {
-          g.items.push(item);
-        }
-      } else {
+    const grupoMap = new Map();
+    let semGrupoIdx = 0;
+    itensSorted.forEach((item) => {
+      const key = item._itemGrupo != null ? String(item._itemGrupo) : `_ng${semGrupoIdx++}`;
+      if (!grupoMap.has(key)) {
+        const g = { key, items: [] };
+        grupoMap.set(key, g);
+        grupos.push(g);
+      }
+      const g = grupoMap.get(key);
+      // Se a mesma coluna de fonte já está ocupada no grupo, criar bloco separado
+      if (g.items.some((i) => origemParaColuna(i.origem) === origemParaColuna(item.origem))) {
         grupos.push({ key: null, items: [item] });
+      } else {
+        g.items.push(item);
       }
     });
 
