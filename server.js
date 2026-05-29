@@ -4334,6 +4334,89 @@ app.post("/api/exportar-cotacoes-c", async (req, res) => {
       },
     };
 
+    // Helper: valor por extenso em português
+    function valorPorExtenso(n) {
+      if (typeof n !== "number" || isNaN(n) || n < 0) return "";
+      const reais = Math.floor(n);
+      const centavos = Math.round((n - reais) * 100);
+      const u = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove"];
+      const e11 = ["onze", "doze", "treze", "quatorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove"];
+      const dec = ["", "dez", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"];
+      const cen = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"];
+      function centenas(x) {
+        if (x === 0) return "";
+        if (x === 100) return "cem";
+        const c = Math.floor(x / 100), r = x % 100;
+        let s = c ? cen[c] : "";
+        if (!r) return s;
+        if (s) s += " e ";
+        if (r < 10) s += u[r];
+        else if (r === 10) s += "dez";
+        else if (r < 20) s += e11[r - 11];
+        else { s += dec[Math.floor(r / 10)]; if (r % 10) s += " e " + u[r % 10]; }
+        return s;
+      }
+      function numero(x) {
+        if (x === 0) return "zero";
+        if (x < 1000) return centenas(x);
+        const mil = Math.floor(x / 1000), r = x % 1000;
+        let s = mil === 1 ? "mil" : centenas(mil) + " mil";
+        if (r) s += (r < 100 ? " e " : " ") + centenas(r);
+        return s;
+      }
+      let res = "";
+      if (reais > 0) res += numero(reais) + (reais === 1 ? " real" : " reais");
+      if (centavos > 0) {
+        if (res) res += " e ";
+        res += numero(centavos) + (centavos === 1 ? " centavo" : " centavos");
+      }
+      return res || "zero reais";
+    }
+
+    // Helper: normalizar nome da fonte para exibição no cabeçalho
+    function nomeFonte(origem) {
+      if (!origem) return "";
+      const o = origem.toUpperCase();
+      if (o.includes("SINAPI")) return "SINAPI";
+      if (o.includes("ORSE")) return "ORSE -SE";
+      if (o.includes("PNCP")) return "PNCP";
+      if (o.includes("SICRO")) return "SICRO";
+      if (o.includes("PE INTEGRADO") || o.includes("PEINTEGRADO")) return "PE INTEGRADO";
+      return origem.toUpperCase();
+    }
+
+    // Helper: gerar nota de rodapé detalhada por fonte
+    function gerarNota(item) {
+      const preco = typeof item.precoUnitario === "number" ? item.precoUnitario : null;
+      const precoStr = preco !== null ? `R$${preco.toFixed(2).replace(".", ",")}` : "";
+      const extenso = preco !== null ? `(${valorPorExtenso(preco)})` : "";
+      const ref = item.referencia || item.licitacao || "";
+      const url = item.link || "";
+      const orgao = item.orgao || "";
+      const data = item.data ? new Date(item.data).toLocaleDateString("pt-BR") : "";
+      const o = (item.origem || "").toUpperCase();
+
+      if (o.includes("SINAPI")) {
+        return `* Valor de referência obtido na base de dados SINAPI ${precoStr} ${extenso}${ref ? `, ${ref}` : ""}.${url ? " " + url : ""}`.trim();
+      }
+      if (o.includes("ORSE")) {
+        return `* Valor de referência obtido na base de dados ORSE-SE: ${precoStr} ${extenso}${ref ? `, ${ref}` : ""}.`.trim();
+      }
+      if (o.includes("PNCP")) {
+        let nota = `* Valor de referência obtida no Portal Nacional de Contratações Públicas ${precoStr} ${extenso}`;
+        if (ref) nota += `, conforme ID da contratação nº ${ref}`;
+        if (orgao) nota += `, adquirida pela ${orgao}`;
+        if (data) nota += `, em ${data}`;
+        nota += ".";
+        if (url) nota += " " + url;
+        return nota.trim();
+      }
+      if (o.includes("SICRO")) {
+        return `* Valor de referência obtido na base de dados SICRO: ${precoStr} ${extenso}${ref ? `, ${ref}` : ""}.${url ? " " + url : ""}`.trim();
+      }
+      return `* Valor de referência ${item.origem}: ${precoStr} ${extenso}${ref ? ` - ${ref}` : ""}${url ? " " + url : ""}`.trim();
+    }
+
     for (const grupo of grupos) {
       const items = grupo.items;
       const item0 = items[0];
@@ -4368,16 +4451,17 @@ app.post("/api/exportar-cotacoes-c", async (req, res) => {
       }
 
       const set = (row, col, val) => sheet.getRow(row).getCell(col).value = val;
+      const colMax = Math.max(8, ...Object.keys(fontesPorCol).map(Number));
 
       // Linha +0: cabeçalhos de coluna
       set(R, 1, "ITEM"); set(R, 2, "CÓDIGO"); set(R, 3, "ESPECIFICAÇÃO");
       set(R, 4, "ORÇAMENTO"); set(R, 6, "COTAÇÕES");
 
-      // Linha +1: nomes das fontes
+      // Linha +1: nomes das fontes (normalizados)
       set(R + 1, 4, "MÉDIA GERAL");
-      Object.entries(fontesPorCol).forEach(([col, item]) => set(R + 1, Number(col), item.origem));
+      Object.entries(fontesPorCol).forEach(([col, item]) => set(R + 1, Number(col), nomeFonte(item.origem)));
 
-      // Linha +2: referências
+      // Linha +2: referências / IDs de edição
       Object.entries(fontesPorCol).forEach(([col, item]) =>
         set(R + 2, Number(col), item.referencia || item.licitacao || "")
       );
@@ -4396,19 +4480,21 @@ app.post("/api/exportar-cotacoes-c", async (req, res) => {
         if (typeof item.precoUnitario === "number") set(R + 4, Number(col), item.precoUnitario);
       });
 
-      // Linhas +5/+6/+7: notas de rodapé por fonte
+      // Linhas +5/+6/+7: notas de rodapé detalhadas, célula mesclada A:colMax
       let notaOffset = 5;
       Object.entries(fontesPorCol).forEach(([, item]) => {
         if (notaOffset > 7) return;
-        const preco = typeof item.precoUnitario === "number"
-          ? `R$ ${item.precoUnitario.toFixed(2).replace(".", ",")}`
-          : "";
-        const ref = item.referencia || item.licitacao || item.orgao || "";
-        const url = item.link || "";
-        let nota = `* ${item.origem}: ${preco}`;
-        if (ref) nota += ` - ${ref}`;
-        if (url) nota += ` - ${url}`;
-        set(R + notaOffset, 1, nota);
+        const rowNum = R + notaOffset;
+        const nota = gerarNota(item);
+        const nRow = sheet.getRow(rowNum);
+        nRow.height = 52;
+        const cell = nRow.getCell(1);
+        cell.value = nota;
+        cell.style = {
+          font: { size: 8, name: "Arial" },
+          alignment: { wrapText: true, vertical: "top", horizontal: "left" },
+        };
+        try { sheet.mergeCells(rowNum, 1, rowNum, colMax); } catch {}
         notaOffset++;
       });
 
