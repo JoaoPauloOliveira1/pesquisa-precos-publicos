@@ -1679,6 +1679,7 @@
     let paginasFonte = {};
     const ITENS_POR_PAGINA = 10;
     let verificacaoHistoricoToken = 0;
+    let codigosSemHistorico = new Set();
     let itemAtual = null;
     let carrinho = [];
     let buscaEmAndamento = false;
@@ -2016,6 +2017,12 @@
       );
     }
 
+    function reorganizarItensHistorico(lista) {
+      const semHistorico = Array.from(lista.querySelectorAll(".item.sem-historico"));
+      if (!semHistorico.length) return;
+      semHistorico.forEach(el => lista.appendChild(el));
+    }
+
     function renderizarListaItens(itens, lista) {
       lista.innerHTML = "";
       ordenarPncpDiretoPorUltimo(itens).forEach((item) => {
@@ -2041,9 +2048,13 @@
           </div>
           <button type="button">${item.diretoPncp ? "PNCP direto" : "Ver preços"}</button>
         `;
+        if (item.codigo && codigosSemHistorico.has(item.codigo)) {
+          div.classList.add("sem-historico");
+        }
         div.querySelector("button").addEventListener("click", (event) => consultarPrecos(item, event.currentTarget));
         lista.appendChild(div);
       });
+      reorganizarItensHistorico(lista);
     }
 
     function renderizarFiltrosCatalogo(itens) {
@@ -2132,10 +2143,14 @@
             const dados = await r.json();
             if (verificacaoHistoricoToken !== token) return;
             if (dados.temHistorico === false) {
+              codigosSemHistorico.add(item.codigo);
               document.querySelector(`.item[data-codigo="${item.codigo}"]`)?.classList?.add("sem-historico");
             }
           } catch {}
         }));
+        if (verificacaoHistoricoToken === token) {
+          reorganizarItensHistorico(document.getElementById("listaItens"));
+        }
         if (i + LOTE < candidatos.length) await new Promise(r => setTimeout(r, 220));
       }
     }
