@@ -2317,7 +2317,7 @@
         fornecedor: r.fornecedor || "",
         orgao: r.orgao || `${r.uf || ""} ${r.dataReferencia || ""}`.trim(),
         data: r.dataReferencia || r.data || "",
-        licitacao: r.ata || r.processo || r.licitacao?.identificador || "",
+        licitacao: r.ata || r.processo || (typeof r.licitacao === "string" ? r.licitacao : r.licitacao?.identificador) || "",
         referencia: r.referencia || `${nomeFonte || r.origem || "Fonte"} ${r.codigo || ""}`,
         link: r.link || "",
       };
@@ -3014,6 +3014,8 @@
 
     function limparCarrinho() {
       carrinho = [];
+      proximoGrupoItem = 1;
+      ultimoCodigoConsultado = null;
       montarCarrinho();
       montarResultados();
     }
@@ -3080,9 +3082,15 @@
       const idx = carrinho.findIndex((item) => idRegistro(item) === id);
       if (idx === -1) return;
       carrinho[idx]._itemGrupo = n;
-      // Atualizar proximoGrupoItem se necessário
       proximoGrupoItem = Math.max(proximoGrupoItem, n);
+      // Preservar foco no input após re-render do DOM
+      const inputAtivo = document.activeElement;
+      const inputAtivoId = inputAtivo?.closest(".carrinho-item")?.querySelector(".grupo-input") === inputAtivo
+        ? id : null;
       montarCarrinho();
+      if (inputAtivoId) {
+        document.querySelector(`.carrinho-item [onchange*="${CSS.escape(inputAtivoId)}"]`)?.focus();
+      }
     }
 
     async function gerarRelatorioPdf(botao) {
@@ -3211,10 +3219,10 @@
 
       if (!planilhaXlsxSelecionada) {
         const input = document.getElementById("inputPlanilhaXlsx");
-        input.value = ""; // força re-seleção se necessário
+        input.value = "";
         input.onchange = () => {
           planilhaXlsxSelecionada = input.files[0] || null;
-          if (planilhaXlsxSelecionada) exportarCotacoesC(botao);
+          if (planilhaXlsxSelecionada) _enviarExportacao(botao); // direto, sem re-entrar em exportarCotacoesC
         };
         input.click();
         return;
@@ -3237,6 +3245,7 @@
 
         if (!resposta.ok) {
           const erro = await resposta.json().catch(() => ({}));
+          planilhaXlsxSelecionada = null; // força re-seleção na próxima tentativa
           alert(erro.erro || "Erro ao exportar para planilha.");
           return;
         }
@@ -3251,6 +3260,7 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       } catch (err) {
+        planilhaXlsxSelecionada = null; // limpa em caso de erro de rede também
         alert("Erro de rede ao exportar: " + err.message);
       } finally {
         setButtonLoading(botao, false, "Exportando...", "Exportar para Planilha");

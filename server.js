@@ -4210,6 +4210,107 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// ─── HELPERS EXPORTAÇÃO COTAÇÕES C ───────────────────────────────────────────
+
+function origemParaColuna(origem) {
+  if (!origem) return 8;
+  const o = origem.toUpperCase();
+  if (o.includes("SINAPI")) return 6;
+  if (o.includes("ORSE")) return 7;
+  if (o.includes("PNCP")) return 8;
+  if (o.includes("SICRO")) return 9;
+  if (o.includes("PE INTEGRADO") || o.includes("PEINTEGRADO")) return 10;
+  return 8;
+}
+
+function clonarEstilo(cell) {
+  try { return JSON.parse(JSON.stringify(cell.style || {})); } catch { return {}; }
+}
+
+function nomeFonteCotacao(origem) {
+  if (!origem) return "";
+  const o = origem.toUpperCase();
+  if (o.includes("SINAPI")) return "SINAPI";
+  if (o.includes("ORSE")) return "ORSE -SE";
+  if (o.includes("PNCP")) return "PNCP";
+  if (o.includes("SICRO")) return "SICRO";
+  if (o.includes("PE INTEGRADO") || o.includes("PEINTEGRADO")) return "PE INTEGRADO";
+  return origem.toUpperCase();
+}
+
+function valorPorExtenso(n) {
+  if (typeof n !== "number" || isNaN(n) || n < 0) return "";
+  const reais = Math.floor(n);
+  const centavos = Math.round((n - reais) * 100);
+  const u = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove"];
+  const e11 = ["onze", "doze", "treze", "quatorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove"];
+  const dec = ["", "dez", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"];
+  const cen = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"];
+  function centenas(x) {
+    if (x === 0) return "";
+    if (x === 100) return "cem";
+    const c = Math.floor(x / 100), r = x % 100;
+    let s = c ? cen[c] : "";
+    if (!r) return s;
+    if (s) s += " e ";
+    if (r < 10) s += u[r];
+    else if (r === 10) s += "dez";
+    else if (r < 20) s += e11[r - 11];
+    else { s += dec[Math.floor(r / 10)]; if (r % 10) s += " e " + u[r % 10]; }
+    return s;
+  }
+  function numero(x) {
+    if (x === 0) return "zero";
+    if (x < 1000) return centenas(x);
+    const mil = Math.floor(x / 1000), r = x % 1000;
+    let s = mil === 1 ? "mil" : centenas(mil) + " mil";
+    if (r) s += (r < 100 ? " e " : " ") + centenas(r);
+    return s;
+  }
+  let res = "";
+  if (reais > 0) res += numero(reais) + (reais === 1 ? " real" : " reais");
+  if (centavos > 0) {
+    if (res) res += " e ";
+    res += numero(centavos) + (centavos === 1 ? " centavo" : " centavos");
+  }
+  return res || "zero reais";
+}
+
+function gerarNotaCotacao(item) {
+  const preco = typeof item.precoUnitario === "number" ? item.precoUnitario : null;
+  const precoStr = preco !== null ? `R$${preco.toFixed(2).replace(".", ",")}` : "";
+  const extenso = preco !== null ? `(${valorPorExtenso(preco)})` : "";
+  const ref = item.referencia || item.licitacao || "";
+  const url = item.link || "";
+  const orgao = item.orgao || "";
+  const data = (() => {
+    if (!item.data) return "";
+    const s = String(item.data);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : new Date(s).toLocaleDateString("pt-BR");
+  })();
+  const o = (item.origem || "").toUpperCase();
+  if (o.includes("SINAPI")) {
+    return `* Valor de referência obtido na base de dados SINAPI ${precoStr} ${extenso}${ref ? `, ${ref}` : ""}.${url ? " " + url : ""}`.trim();
+  }
+  if (o.includes("ORSE")) {
+    return `* Valor de referência obtido na base de dados ORSE-SE: ${precoStr} ${extenso}${ref ? `, ${ref}` : ""}.`.trim();
+  }
+  if (o.includes("PNCP")) {
+    let nota = `* Valor de referência obtida no Portal Nacional de Contratações Públicas ${precoStr} ${extenso}`;
+    if (ref) nota += `, conforme ID da contratação nº ${ref}`;
+    if (orgao) nota += `, adquirida pela ${orgao}`;
+    if (data) nota += `, em ${data}`;
+    nota += ".";
+    if (url) nota += " " + url;
+    return nota.trim();
+  }
+  if (o.includes("SICRO")) {
+    return `* Valor de referência obtido na base de dados SICRO: ${precoStr} ${extenso}${ref ? `, ${ref}` : ""}.${url ? " " + url : ""}`.trim();
+  }
+  return `* Valor de referência ${item.origem}: ${precoStr} ${extenso}${ref ? ` - ${ref}` : ""}${url ? " " + url : ""}`.trim();
+}
+
 // ─── EXPORTAR COTAÇÕES C ──────────────────────────────────────────────────────
 app.post("/api/exportar-cotacoes-c", async (req, res) => {
   if (!multerLib || !ExcelJS) {
@@ -4277,18 +4378,6 @@ app.post("/api/exportar-cotacoes-c", async (req, res) => {
     let proximaLinha = ultimoN === 0 ? ultimaLinhaHeader : ultimaLinhaHeader + 8;
     let proximoN = ultimoN + 1;
 
-    // Mapear origem → coluna
-    function origemParaColuna(origem) {
-      if (!origem) return 8;
-      const o = origem.toUpperCase();
-      if (o.includes("SINAPI")) return 6;   // F
-      if (o.includes("ORSE")) return 7;     // G
-      if (o.includes("PNCP")) return 8;     // H
-      if (o.includes("SICRO")) return 9;    // I
-      if (o.includes("PE INTEGRADO") || o.includes("PEINTEGRADO")) return 10; // J
-      return 8;
-    }
-
     // Agrupar pelo número de item atribuído na UI (_itemGrupo), em ordem crescente
     const itensSorted = [...itens].sort((a, b) => (a._itemGrupo || 999) - (b._itemGrupo || 999));
     const grupos = [];
@@ -4310,11 +4399,6 @@ app.post("/api/exportar-cotacoes-c", async (req, res) => {
       }
     });
 
-    // Clonar estilo de célula
-    function clonarEstilo(cell) {
-      try { return JSON.parse(JSON.stringify(cell.style || {})); } catch { return {}; }
-    }
-
     // Detectar primeira linha de bloco (para copiar estilos de cabeçalho)
     let primeiraLinhaHeader = -1;
     sheet.eachRow({ includeEmpty: false }, (row, rowNum) => {
@@ -4334,89 +4418,6 @@ app.post("/api/exportar-cotacoes-c", async (req, res) => {
         left: { style: "thin" }, right: { style: "thin" },
       },
     };
-
-    // Helper: valor por extenso em português
-    function valorPorExtenso(n) {
-      if (typeof n !== "number" || isNaN(n) || n < 0) return "";
-      const reais = Math.floor(n);
-      const centavos = Math.round((n - reais) * 100);
-      const u = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove"];
-      const e11 = ["onze", "doze", "treze", "quatorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove"];
-      const dec = ["", "dez", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"];
-      const cen = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"];
-      function centenas(x) {
-        if (x === 0) return "";
-        if (x === 100) return "cem";
-        const c = Math.floor(x / 100), r = x % 100;
-        let s = c ? cen[c] : "";
-        if (!r) return s;
-        if (s) s += " e ";
-        if (r < 10) s += u[r];
-        else if (r === 10) s += "dez";
-        else if (r < 20) s += e11[r - 11];
-        else { s += dec[Math.floor(r / 10)]; if (r % 10) s += " e " + u[r % 10]; }
-        return s;
-      }
-      function numero(x) {
-        if (x === 0) return "zero";
-        if (x < 1000) return centenas(x);
-        const mil = Math.floor(x / 1000), r = x % 1000;
-        let s = mil === 1 ? "mil" : centenas(mil) + " mil";
-        if (r) s += (r < 100 ? " e " : " ") + centenas(r);
-        return s;
-      }
-      let res = "";
-      if (reais > 0) res += numero(reais) + (reais === 1 ? " real" : " reais");
-      if (centavos > 0) {
-        if (res) res += " e ";
-        res += numero(centavos) + (centavos === 1 ? " centavo" : " centavos");
-      }
-      return res || "zero reais";
-    }
-
-    // Helper: normalizar nome da fonte para exibição no cabeçalho
-    function nomeFonte(origem) {
-      if (!origem) return "";
-      const o = origem.toUpperCase();
-      if (o.includes("SINAPI")) return "SINAPI";
-      if (o.includes("ORSE")) return "ORSE -SE";
-      if (o.includes("PNCP")) return "PNCP";
-      if (o.includes("SICRO")) return "SICRO";
-      if (o.includes("PE INTEGRADO") || o.includes("PEINTEGRADO")) return "PE INTEGRADO";
-      return origem.toUpperCase();
-    }
-
-    // Helper: gerar nota de rodapé detalhada por fonte
-    function gerarNota(item) {
-      const preco = typeof item.precoUnitario === "number" ? item.precoUnitario : null;
-      const precoStr = preco !== null ? `R$${preco.toFixed(2).replace(".", ",")}` : "";
-      const extenso = preco !== null ? `(${valorPorExtenso(preco)})` : "";
-      const ref = item.referencia || item.licitacao || "";
-      const url = item.link || "";
-      const orgao = item.orgao || "";
-      const data = item.data ? new Date(item.data).toLocaleDateString("pt-BR") : "";
-      const o = (item.origem || "").toUpperCase();
-
-      if (o.includes("SINAPI")) {
-        return `* Valor de referência obtido na base de dados SINAPI ${precoStr} ${extenso}${ref ? `, ${ref}` : ""}.${url ? " " + url : ""}`.trim();
-      }
-      if (o.includes("ORSE")) {
-        return `* Valor de referência obtido na base de dados ORSE-SE: ${precoStr} ${extenso}${ref ? `, ${ref}` : ""}.`.trim();
-      }
-      if (o.includes("PNCP")) {
-        let nota = `* Valor de referência obtida no Portal Nacional de Contratações Públicas ${precoStr} ${extenso}`;
-        if (ref) nota += `, conforme ID da contratação nº ${ref}`;
-        if (orgao) nota += `, adquirida pela ${orgao}`;
-        if (data) nota += `, em ${data}`;
-        nota += ".";
-        if (url) nota += " " + url;
-        return nota.trim();
-      }
-      if (o.includes("SICRO")) {
-        return `* Valor de referência obtido na base de dados SICRO: ${precoStr} ${extenso}${ref ? `, ${ref}` : ""}.${url ? " " + url : ""}`.trim();
-      }
-      return `* Valor de referência ${item.origem}: ${precoStr} ${extenso}${ref ? ` - ${ref}` : ""}${url ? " " + url : ""}`.trim();
-    }
 
     for (const grupo of grupos) {
       const items = grupo.items;
@@ -4460,7 +4461,7 @@ app.post("/api/exportar-cotacoes-c", async (req, res) => {
 
       // Linha +1: nomes das fontes (normalizados)
       set(R + 1, 4, "MÉDIA GERAL");
-      Object.entries(fontesPorCol).forEach(([col, item]) => set(R + 1, Number(col), nomeFonte(item.origem)));
+      Object.entries(fontesPorCol).forEach(([col, item]) => set(R + 1, Number(col), nomeFonteCotacao(item.origem)));
 
       // Linha +2: referências / IDs de edição
       Object.entries(fontesPorCol).forEach(([col, item]) =>
@@ -4486,7 +4487,7 @@ app.post("/api/exportar-cotacoes-c", async (req, res) => {
       Object.entries(fontesPorCol).forEach(([, item]) => {
         if (notaOffset > 7) return;
         const rowNum = R + notaOffset;
-        const nota = gerarNota(item);
+        const nota = gerarNotaCotacao(item);
         const nRow = sheet.getRow(rowNum);
         nRow.height = 52;
         const cell = nRow.getCell(1);
