@@ -2095,14 +2095,10 @@ function normalizarRegistroPeIntegrado(ata, item, termo) {
     ata: ataNumero,
     processo,
     referencia: [ataNumero, processo].filter(Boolean).join(" | "),
-    link: PE_INTEGRADO_ARP_BASE,
-    licitacao: {
-      codigoCompra: processo,
-      numeroControlePncp: "",
-      modalidade: "Ata de Registro de Preço",
-      linkPncp: PE_INTEGRADO_ARP_BASE,
-      identificador: ataNumero || processo,
-    },
+    licitacao: [ataNumero, processo].filter(Boolean).join(" | "),
+    link: ataNumero
+      ? `${PE_INTEGRADO_ARP_BASE}?sARP=${encodeURIComponent(ataNumero)}`
+      : PE_INTEGRADO_ARP_BASE,
     peIntegrado: {
       nCdRegistroPreco: ata.nCdRegistroPreco,
       ata: ataNumero,
@@ -2153,26 +2149,33 @@ async function consultarPeIntegrado({ termo, periodoMeses }) {
 
     const termosBusca = gerarTermosBusca(termoBusca);
     const registros = [];
+    const LOTE_ATAS = 5; // requisições paralelas simultâneas
 
-    for (const ata of atas) {
-      if (registros.length >= 100) break;
+    for (let i = 0; i < atas.length && registros.length < 100; i += LOTE_ATAS) {
+      const lote = atas.slice(i, i + LOTE_ATAS);
 
-      let itens = [];
-      try {
-        itens = await buscarItensAtaPeIntegrado(ata.nCdRegistroPreco);
-      } catch (error) {
-        debugWarn(`Não foi possível abrir itens da ata ${ata.sNrRegistroPreco}:`, error.message);
-        continue;
-      }
+      const resultados = await Promise.allSettled(
+        lote.map((ata) =>
+          buscarItensAtaPeIntegrado(ata.nCdRegistroPreco).then((itens) => ({ ata, itens }))
+        )
+      );
 
-      for (const item of itens) {
-        const descricao = item.sDsProduto || "";
-        const corresponde = termosBusca.some((termoBuscaItem) => textoContemTodasPalavras(descricao, termoBuscaItem));
-        const valor = normalizarValor(item.dVlUnitario);
+      for (const resultado of resultados) {
+        if (resultado.status === "rejected") {
+          debugWarn("Não foi possível abrir itens da ata:", resultado.reason?.message);
+          continue;
+        }
 
-        if (!corresponde || Number.isNaN(valor) || valor <= 0) continue;
+        const { ata, itens } = resultado.value;
+        for (const item of itens) {
+          const descricao = item.sDsProduto || "";
+          const corresponde = termosBusca.some((t) => textoContemTodasPalavras(descricao, t));
+          const valor = normalizarValor(item.dVlUnitario);
+          if (!corresponde || Number.isNaN(valor) || valor <= 0) continue;
+          registros.push(normalizarRegistroPeIntegrado(ata, item, termoBusca));
+          if (registros.length >= 100) break;
+        }
 
-        registros.push(normalizarRegistroPeIntegrado(ata, item, termoBusca));
         if (registros.length >= 100) break;
       }
     }
