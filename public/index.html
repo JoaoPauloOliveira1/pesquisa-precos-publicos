@@ -517,13 +517,14 @@
     /* ── FORM ───────────────────────────────────── */
     .form-grid {
       display: grid;
-      grid-template-columns: minmax(150px, 1.1fr) minmax(130px, 0.8fr) minmax(105px, 0.45fr) auto;
+      grid-template-columns: minmax(110px, 0.75fr) minmax(130px, 0.8fr) minmax(130px, 0.8fr) minmax(105px, 0.45fr) auto;
       gap: 10px;
       align-items: end;
     }
 
     .campo-descricao { grid-column: 1 / -1; }
     .campo-periodo { min-width: 130px; }
+    .campo-abrangencia { min-width: 130px; }
     .campo-regime { grid-column: span 2; }
 
     .sinapi-panel {
@@ -1614,6 +1615,15 @@
               </select>
             </label>
 
+            <label class="campo-abrangencia">
+              Abrangência
+              <select id="abrangencia">
+                <option value="pernambuco">Pernambuco</option>
+                <option value="nordeste">Nordeste</option>
+                <option value="brasil" selected>Brasil</option>
+              </select>
+            </label>
+
             <label class="campo-pncp">
               Mostrar
               <select id="limiteItens">
@@ -1771,6 +1781,14 @@
       "PE", "PB", "AL", "RN", "PI", "BA", "CE", "SE", "MA", "PA", "TO", "DF", "GO", "MG",
       "ES", "RJ", "SP", "MS", "MT", "PR", "SC", "RS", "RR", "AP", "AM", "RO", "AC",
     ];
+
+    function abrangenciaSelecionada() {
+      return document.getElementById("abrangencia")?.value || "brasil";
+    }
+
+    function ufSinapiPorAbrangencia() {
+      return abrangenciaSelecionada() === "pernambuco" ? "PE" : "BR";
+    }
 
     function setMesPadrao() {
       const campo = document.getElementById("sinapiData");
@@ -2274,6 +2292,8 @@
         precoUnitario: item.valorUnitarioHomologado || r.precoUnitario || "",
         fornecedor: r.nomeFornecedor || item.fornecedor || "",
         orgao: contratacao.orgao || r.nomeUasg || "",
+        local: contratacao.local || [r.municipio, r.estado || r.uf].filter(Boolean).join("/"),
+        uf: r.uf || r.estado || "",
         data: item.dataResultadoHomologacao || r.dataResultado || r.dataCompra || "",
         licitacao,
         referencia: contratacao.numeroControlePncp || identificador,
@@ -2316,6 +2336,9 @@
         precoUnitario: r.precoUnitario || "",
         fornecedor: r.fornecedor || "",
         orgao: r.orgao || `${r.uf || ""} ${r.dataReferencia || ""}`.trim(),
+        local: r.local || [r.municipio, r.uf].filter(Boolean).join("/"),
+        uf: r.uf || "",
+        regiao: r.regiao || REGIOES_UF[r.uf] || "",
         data: r.dataReferencia || r.data || "",
         licitacao: r.ata || r.processo || (typeof r.licitacao === "string" ? r.licitacao : r.licitacao?.identificador) || "",
         referencia: r.referencia || `${nomeFonte || r.origem || "Fonte"} ${r.codigo || ""}`,
@@ -2594,7 +2617,8 @@
         tipo: item.tipo,
         tamanhoPagina: "150",
         termo: termoSinapi,
-        sinapiUf: "BR",
+        abrangencia: abrangenciaSelecionada(),
+        sinapiUf: ufSinapiPorAbrangencia(),
         sinapiDataReferencia: "",
         sinapiRegime: "AMBOS",
         sinapiTipo: document.getElementById("sinapiTipo")?.value || "ambos",
@@ -2796,6 +2820,7 @@
             ${renderMetaCopiavel("Unidade", registro.unidade || "-")}
             ${renderMetaCopiavel("Qtd.", registro.quantidade || "-")}
             ${renderMetaCopiavel("Fornecedor", registro.fornecedor || "-")}
+            ${renderMetaCopiavel("Local", registro.local || registro.uf || "-")}
             ${renderMetaCopiavel("Órgão/ref.", registro.orgao || "-")}
             ${renderMetaCopiavel("Referência", registro.referencia || "-")}
             ${renderMetaCopiavel("Valor unitário", moeda(registro.precoUnitario), moeda(registro.precoUnitario))}
@@ -3182,7 +3207,7 @@
         .filter(([, ativo]) => ativo)
         .map(([f]) => f)
         .join(",");
-      const params = new URLSearchParams({ q: termo, fontes });
+      const params = new URLSearchParams({ q: termo, fontes, abrangencia: abrangenciaSelecionada() });
       window.history.pushState({}, "", `${window.location.pathname}?${params.toString()}`);
     }
 
@@ -3192,6 +3217,10 @@
       if (!q) return;
 
       document.getElementById("termo").value = q;
+      const abrangencia = params.get("abrangencia");
+      if (abrangencia && document.getElementById("abrangencia")) {
+        document.getElementById("abrangencia").value = abrangencia;
+      }
 
       const fonteParam = params.get("fontes");
       if (fonteParam) {

@@ -53,6 +53,15 @@ const REGIOES_UF = {
   PI: "Nordeste", RJ: "Sudeste", RN: "Nordeste", RS: "Sul", RO: "Norte", RR: "Norte",
   SC: "Sul", SP: "Sudeste", SE: "Nordeste", TO: "Norte",
 };
+const UFS_NORDESTE = UFS_BRASIL.filter((uf) => REGIOES_UF[uf] === "Nordeste");
+const UF_POR_NOME_ESTADO = {
+  acre: "AC", alagoas: "AL", amapa: "AP", amazonas: "AM", bahia: "BA", ceara: "CE",
+  "distrito federal": "DF", espirito_santo: "ES", goias: "GO", maranhao: "MA",
+  mato_grosso: "MT", mato_grosso_do_sul: "MS", minas_gerais: "MG", para: "PA",
+  paraiba: "PB", parana: "PR", pernambuco: "PE", piaui: "PI", rio_de_janeiro: "RJ",
+  rio_grande_do_norte: "RN", rio_grande_do_sul: "RS", rondonia: "RO", roraima: "RR",
+  santa_catarina: "SC", sao_paulo: "SP", sergipe: "SE", tocantins: "TO",
+};
 const DEBUG_LOGS = process.env.DEBUG_LOGS === "1";
 const IS_RENDER = process.env.RENDER === "true";
 const CURL_BIN = process.platform === "win32" ? "curl.exe" : "curl";
@@ -270,6 +279,74 @@ function normalizarTexto(texto) {
     .replace(/[^\w\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizarAbrangencia(valor) {
+  const texto = normalizarTexto(valor || "brasil");
+  if (["pe", "pernambuco", "estado"].includes(texto)) return "pernambuco";
+  if (["ne", "nordeste", "regiao nordeste"].includes(texto)) return "nordeste";
+  return "brasil";
+}
+
+function ufParaConsultaPorAbrangencia(abrangencia) {
+  return normalizarAbrangencia(abrangencia) === "pernambuco" ? "PE" : "";
+}
+
+function ufsPermitidasPorAbrangencia(abrangencia) {
+  const escopo = normalizarAbrangencia(abrangencia);
+  if (escopo === "pernambuco") return new Set(["PE"]);
+  if (escopo === "nordeste") return new Set(UFS_NORDESTE);
+  return null;
+}
+
+function normalizarUf(valor) {
+  const texto = String(valor || "").trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(texto) && UFS_BRASIL.includes(texto)) return texto;
+
+  const nome = normalizarTexto(valor);
+  return UF_POR_NOME_ESTADO[nome] || UF_POR_NOME_ESTADO[nome.replace(/\s+/g, "_")] || "";
+}
+
+function extrairUfRegistro(registro) {
+  const localContratacao = registro?.pncp?.contratacao?.local || "";
+  const ufLocal = String(localContratacao).match(/\/\s*([A-Z]{2})\s*$/i)?.[1] || "";
+  const candidatos = [
+    registro?.uf,
+    registro?.estado,
+    registro?.unidadeOrgao?.ufSigla,
+    registro?.pncp?.contratacao?.uf,
+    registro?.pncp?.contratacao?.estado,
+    registro?.pncp?.contratacao?.ufSigla,
+    registro?.licitacao?.uf,
+    ufLocal,
+  ];
+
+  for (const candidato of candidatos) {
+    const uf = normalizarUf(candidato);
+    if (uf) return uf;
+  }
+
+  return "";
+}
+
+function registroAtendeAbrangencia(registro, abrangencia) {
+  const permitidas = ufsPermitidasPorAbrangencia(abrangencia);
+  if (!permitidas) return true;
+
+  const uf = extrairUfRegistro(registro);
+  return uf ? permitidas.has(uf) : false;
+}
+
+function filtrarRegistrosPorAbrangencia(registros, abrangencia) {
+  return registros.filter((registro) => registroAtendeAbrangencia(registro, abrangencia));
+}
+
+function filtrarRespostaFontePorAbrangencia(resposta, abrangencia) {
+  if (!resposta || !Array.isArray(resposta.registros)) return resposta;
+  return {
+    ...resposta,
+    registros: filtrarRegistrosPorAbrangencia(resposta.registros, abrangencia),
+  };
 }
 
 function gerarTermosBusca(termo) {
@@ -1512,6 +1589,7 @@ function resumirContratacaoPncp(meta, detalhe = null) {
     local: [detalhe?.unidadeOrgao?.municipioNome || meta?.municipio_nome, detalhe?.unidadeOrgao?.ufSigla || meta?.uf]
       .filter(Boolean)
       .join("/"),
+    uf: detalhe?.unidadeOrgao?.ufSigla || meta?.uf || "",
     orgao: detalhe?.orgaoEntidade?.razaoSocial || meta?.orgao_nome || "",
     unidadeCompradora:
       detalhe?.unidadeOrgao?.codigoUnidade && detalhe?.unidadeOrgao?.nomeUnidade
@@ -1734,7 +1812,7 @@ function montarRegistroPncpDireto({ meta, detalhe, item, resultado, codigo }) {
   };
 }
 
-async function buscarPrecosPncpDireto({ termo, codigo, tipo, limite = 150 }) {
+async function buscarPrecosPncpDireto({ termo, codigo, tipo, limite = 150, abrangencia = "brasil" }) {
   const termoBusca = String(termo || codigo || "").trim();
   if (!termoBusca || tipo === "material-pdm") return [];
 
@@ -1745,13 +1823,14 @@ async function buscarPrecosPncpDireto({ termo, codigo, tipo, limite = 150 }) {
   url.searchParams.set("tipos_documento", "edital");
   url.searchParams.set("ordenacao", "-data");
   url.searchParams.set("pagina", "1");
-  url.searchParams.set("tam_pagina", "20");
+  url.searchParams.set("tam_pagina", normalizarAbrangencia(abrangencia) === "brasil" ? "20" : "50");
   url.searchParams.set("status", "todos");
 
   const dados = await consultarPncpJson(url, 10000);
   const metas = (dados?.items || [])
     .filter((meta) => meta?.orgao_cnpj && meta?.ano && meta?.numero_sequencial)
     .filter((meta) => meta.tem_resultado !== false)
+    .filter((meta) => registroAtendeAbrangencia({ uf: meta.uf }, abrangencia))
     .sort((a, b) => Number(Boolean(b.tem_resultado)) - Number(Boolean(a.tem_resultado)))
     .slice(0, 6);
 
@@ -3558,6 +3637,8 @@ app.get("/api/precos", async (req, res) => {
     const sinapiTipo = req.query.sinapiTipo || "ambos";
     const incluirSinapi = req.query.incluirSinapi === "1";
     const incluirPncp = req.query.incluirPncp !== "0";
+    const abrangencia = normalizarAbrangencia(req.query.abrangencia);
+    const ufConsultaFontes = ufParaConsultaPorAbrangencia(abrangencia);
     const fontesAdicionais = String(req.query.fontesAdicionais || "")
       .split(",")
       .map((fonte) => fonte.trim().toLowerCase())
@@ -3574,10 +3655,14 @@ app.get("/api/precos", async (req, res) => {
     let erroPncp = "";
     let usandoCachePrecos = false;
     let cacheAtualizadoEm = "";
-    const cacheKeyPrecos = chaveCache("precos", tipo, codigo, termoSinapi, periodoMeses);
+    const cacheKeyPrecos = chaveCache("precos", tipo, codigo, termoSinapi, periodoMeses, abrangencia);
     const cachePrecos = obterCache("precos", cacheKeyPrecos);
 
     if (incluirPncp && tipo !== "material-pdm" && tipo !== "pncp-direto" && !resultado.length) {
+      const tamanhoPaginaPncp =
+        abrangencia === "brasil"
+          ? tamanhoPagina
+          : String(Math.max(Number(tamanhoPagina) || 0, 500));
       const endpoint =
         tipo === "servico"
           ? "/modulo-pesquisa-preco/3_consultarServico"
@@ -3586,7 +3671,7 @@ app.get("/api/precos", async (req, res) => {
       const url = new URL(BASE + endpoint);
 
       url.searchParams.set("pagina", "1");
-      url.searchParams.set("tamanhoPagina", tamanhoPagina);
+      url.searchParams.set("tamanhoPagina", tamanhoPaginaPncp);
       url.searchParams.set("codigoItemCatalogo", codigo);
 
       try {
@@ -3608,6 +3693,7 @@ app.get("/api/precos", async (req, res) => {
 
         resultado = (await enriquecerRegistrosComPncp(resultadoBase, 50))
           .filter((registro) => linkPncpValido(registro.linkPncpGerado))
+          .filter((registro) => registroAtendeAbrangencia(registro, abrangencia))
           .sort((a, b) => timestampRegistro(b) - timestampRegistro(a));
 
         if (resultado.length) {
@@ -3629,6 +3715,7 @@ app.get("/api/precos", async (req, res) => {
           codigo,
           tipo,
           limite: 80,
+          abrangencia,
         });
 
         if (resultado.length) {
@@ -3670,30 +3757,31 @@ app.get("/api/precos", async (req, res) => {
           termoBusca: termoSinapi,
           registros: [],
         };
+    const sinapiFiltrado = filtrarRespostaFontePorAbrangencia(sinapi, abrangencia);
     const fontes = [];
 
     for (const fonteId of fontesAdicionais) {
       if (fonteId === "sinapi") continue;
       if (fonteId === "sicro") {
-        fontes.push(await consultarSicroNordeste({
+        fontes.push(filtrarRespostaFontePorAbrangencia(await consultarSicroNordeste({
           termo: termoSinapi,
-          uf: sinapiUf,
-        }));
+          uf: ufConsultaFontes,
+        }), abrangencia));
       } else if (fonteId === "orse") {
-        fontes.push(await consultarOrseSe({
+        fontes.push(filtrarRespostaFontePorAbrangencia(await consultarOrseSe({
           termo: termoSinapi,
-        }));
+        }), abrangencia));
       } else if (fonteId === "peintegrado") {
-        fontes.push(await consultarPeIntegrado({
+        fontes.push(filtrarRespostaFontePorAbrangencia(await consultarPeIntegrado({
           termo: termoSinapi,
           periodoMeses,
-        }));
+        }), abrangencia));
       } else if (FONTES_LOCAIS[fonteId]) {
-        fontes.push(await consultarBaseLocal({
+        fontes.push(filtrarRespostaFontePorAbrangencia(await consultarBaseLocal({
           fonteId,
           termo: termoSinapi,
-          uf: sinapiUf,
-        }));
+          uf: ufConsultaFontes,
+        }), abrangencia));
       } else if (FONTES_EXTERNAS[fonteId]) {
         fontes.push(consultarFonteExternaPendente(fonteId));
       }
@@ -3705,6 +3793,7 @@ app.get("/api/precos", async (req, res) => {
       codigo,
       tipo,
       incluirPncp,
+      abrangencia,
       periodoMeses,
       totalRegistros: resultado.length,
       totalRegistrosPncp: registrosPncp.length,
@@ -3714,7 +3803,7 @@ app.get("/api/precos", async (req, res) => {
       estatisticas,
       registros: resultado,
       registrosPncp,
-      sinapi,
+      sinapi: sinapiFiltrado,
       fontes,
     });
   } catch (error) {
@@ -3722,13 +3811,15 @@ app.get("/api/precos", async (req, res) => {
     const tipo = req.query.tipo || "material";
     const termoSinapi = req.query.termo || "";
     const periodoMeses = normalizarPeriodoMeses(req.query.periodoMeses);
-    const cachePrecos = obterCache("precos", chaveCache("precos", tipo, codigo, termoSinapi, periodoMeses));
+    const abrangencia = normalizarAbrangencia(req.query.abrangencia);
+    const cachePrecos = obterCache("precos", chaveCache("precos", tipo, codigo, termoSinapi, periodoMeses, abrangencia));
 
     if (cachePrecos?.payload?.registros?.length) {
       const registros = cachePrecos.payload.registros;
       return res.json({
         codigo,
         tipo,
+        abrangencia,
         periodoMeses,
         totalRegistros: registros.length,
         totalRegistrosPncp: 0,
@@ -3764,6 +3855,8 @@ app.get("/api/precos-fonte", async (req, res) => {
   const fonteId = String(req.query.fonte || "").trim().toLowerCase();
   const termo = req.query.termo || req.query.codigo || "";
   const uf = req.query.sinapiUf || "BR";
+  const abrangencia = normalizarAbrangencia(req.query.abrangencia);
+  const ufConsultaFontes = ufParaConsultaPorAbrangencia(abrangencia);
   const periodoMeses = normalizarPeriodoMeses(req.query.periodoMeses);
 
   try {
@@ -3774,29 +3867,35 @@ app.get("/api/precos-fonte", async (req, res) => {
     }
 
     if (fonteId === "sinapi") {
-      return res.json(await consultarPrecosSinapi({
+      return res.json(filtrarRespostaFontePorAbrangencia(await consultarPrecosSinapi({
         termo,
         uf,
         dataReferencia: req.query.sinapiDataReferencia || dataReferenciaPadrao(),
         regime: req.query.sinapiRegime || "NAO_DESONERADO",
         tipo: req.query.sinapiTipo || "ambos",
-      }));
+      }), abrangencia));
     }
 
     if (fonteId === "sicro") {
-      return res.json(await consultarSicroNordeste({ termo, uf }));
+      return res.json(filtrarRespostaFontePorAbrangencia(
+        await consultarSicroNordeste({ termo, uf: ufConsultaFontes }),
+        abrangencia
+      ));
     }
 
     if (fonteId === "orse") {
-      return res.json(await consultarOrseSe({ termo }));
+      return res.json(filtrarRespostaFontePorAbrangencia(await consultarOrseSe({ termo }), abrangencia));
     }
 
     if (fonteId === "peintegrado") {
-      return res.json(await consultarPeIntegrado({ termo, periodoMeses }));
+      return res.json(filtrarRespostaFontePorAbrangencia(await consultarPeIntegrado({ termo, periodoMeses }), abrangencia));
     }
 
     if (FONTES_LOCAIS[fonteId]) {
-      return res.json(await consultarBaseLocal({ fonteId, termo, uf }));
+      return res.json(filtrarRespostaFontePorAbrangencia(
+        await consultarBaseLocal({ fonteId, termo, uf: ufConsultaFontes }),
+        abrangencia
+      ));
     }
 
     if (FONTES_EXTERNAS[fonteId]) {
