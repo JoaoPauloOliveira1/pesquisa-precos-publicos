@@ -1025,6 +1025,15 @@ function mensagemErroApiPublica(error) {
   return mensagem;
 }
 
+function montarUrlPesquisaPreco(endpoint, codigo, tamanhoPagina = "10") {
+  const url = new URL(BASE + endpoint);
+  url.searchParams.set("pagina", "1");
+  url.searchParams.set("tamanhoPagina", String(tamanhoPagina));
+  url.searchParams.set("tipo", "codigoItemCatalogo");
+  url.searchParams.set("codigo", codigo);
+  return url;
+}
+
 function apiCatalogoInstavel(error) {
   const mensagem = String(error?.message || error || "");
   return (
@@ -3668,11 +3677,7 @@ app.get("/api/precos", async (req, res) => {
           ? "/modulo-pesquisa-preco/3_consultarServico"
           : "/modulo-pesquisa-preco/1_consultarMaterial";
 
-      const url = new URL(BASE + endpoint);
-
-      url.searchParams.set("pagina", "1");
-      url.searchParams.set("tamanhoPagina", tamanhoPaginaPncp);
-      url.searchParams.set("codigoItemCatalogo", codigo);
+      const url = montarUrlPesquisaPreco(endpoint, codigo, tamanhoPaginaPncp);
 
       try {
         const dados = await consultarJson(url, 45000);
@@ -4217,10 +4222,7 @@ app.get("/api/tem-historico", async (req, res) => {
     ? "/modulo-pesquisa-preco/3_consultarServico"
     : "/modulo-pesquisa-preco/1_consultarMaterial";
 
-  const url = new URL(BASE + endpoint);
-  url.searchParams.set("pagina", "1");
-  url.searchParams.set("tamanhoPagina", "10");
-  url.searchParams.set("codigoItemCatalogo", codigo);
+  const url = montarUrlPesquisaPreco(endpoint, codigo, "10");
 
   try {
     const dados = await consultarJson(url, 12000);
@@ -4241,10 +4243,7 @@ app.get("/api/debug-pncp", async (req, res) => {
     ? "/modulo-pesquisa-preco/3_consultarServico"
     : "/modulo-pesquisa-preco/1_consultarMaterial";
 
-  const url = new URL(BASE + endpoint);
-  url.searchParams.set("pagina", "1");
-  url.searchParams.set("tamanhoPagina", "5");
-  url.searchParams.set("codigoItemCatalogo", codigo);
+  const url = montarUrlPesquisaPreco(endpoint, codigo, "5");
 
   try {
     const dados = await consultarJson(url, 30000);

@@ -2229,6 +2229,9 @@
             if (dados.temHistorico === false) {
               codigosSemHistorico.add(item.codigo);
               document.querySelector(`.item[data-codigo="${item.codigo}"]`)?.classList?.add("sem-historico");
+            } else if (dados.temHistorico === true) {
+              codigosSemHistorico.delete(item.codigo);
+              document.querySelector(`.item[data-codigo="${item.codigo}"]`)?.classList?.remove("sem-historico");
             }
           } catch {}
         }));
