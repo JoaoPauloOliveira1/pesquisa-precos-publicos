@@ -2218,7 +2218,7 @@
 
     async function verificarHistoricoItens(itens, token) {
       const candidatos = itens.filter(i => !i.diretoPncp && !i.somenteSinapi && i.codigo);
-      const LOTE = 3;
+      const LOTE = 1;
       for (let i = 0; i < candidatos.length; i += LOTE) {
         if (verificacaoHistoricoToken !== token) return;
         await Promise.all(candidatos.slice(i, i + LOTE).map(async (item) => {
@@ -2238,7 +2238,7 @@
         if (verificacaoHistoricoToken === token) {
           reorganizarItensHistorico(document.getElementById("listaItens"));
         }
-        if (i + LOTE < candidatos.length) await new Promise(r => setTimeout(r, 220));
+        if (i + LOTE < candidatos.length) await new Promise(r => setTimeout(r, 900));
       }
     }
 

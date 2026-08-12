@@ -952,23 +952,12 @@ function calcularEstatisticas(lista) {
 async function consultarJson(url, timeoutMs = 15000) {
   debugLog("Consultando:", url.toString());
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
-    const resposta = await fetch(url.toString(), {
-      headers: {
-        accept: "application/json",
-        "user-agent": "Mozilla/5.0",
-      },
-      signal: controller.signal,
-    });
-
-    const texto = await resposta.text();
-
-    if (!resposta.ok) {
-      throw new Error(`Status ${resposta.status}: ${texto}`);
-    }
+    const texto = await consultarTextoJsonComRetry(
+      url,
+      timeoutMs,
+      "A API publica demorou demais para responder. Tente novamente em alguns segundos."
+    );
 
     try {
       return JSON.parse(texto);
@@ -981,8 +970,6 @@ async function consultarJson(url, timeoutMs = 15000) {
     }
 
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -1020,6 +1007,10 @@ function mensagemErroApiPublica(error) {
 
   if (mensagem.includes("demorou demais")) {
     return "A API pública demorou para responder. Tente novamente em alguns segundos.";
+  }
+
+  if (mensagem.includes("Status 429") || mensagem.toLowerCase().includes("rate limit")) {
+    return "O Compras.gov limitou temporariamente as consultas. Aguarde alguns segundos e tente novamente.";
   }
 
   return mensagem;
@@ -1205,36 +1196,79 @@ async function executarEmLotes(itens, tamanhoLote, handler) {
   return resultados;
 }
 
+function aguardar(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function esperaRateLimitMs(resposta, tentativa) {
+  const retryAfter = Number(resposta.headers.get("retry-after"));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return Math.min(retryAfter * 1000, 8000);
+  }
+
+  return 1200 * (tentativa + 1);
+}
+
+async function consultarTextoJsonComRetry(url, timeoutMs, mensagemTimeout, tentativas = 3) {
+  let ultimoErro = null;
+
+  for (let tentativa = 0; tentativa < tentativas; tentativa++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let aguardarAntesDaProximaTentativa = 0;
+
+    try {
+      const resposta = await fetch(url.toString(), {
+        headers: {
+          accept: "application/json",
+          "user-agent": "Mozilla/5.0",
+        },
+        signal: controller.signal,
+      });
+
+      const texto = await resposta.text();
+
+      if (!resposta.ok) {
+        if (resposta.status === 429 && tentativa < tentativas - 1) {
+          aguardarAntesDaProximaTentativa = esperaRateLimitMs(resposta, tentativa);
+        } else {
+          throw new Error(`Status ${resposta.status}: ${texto}`);
+        }
+      } else {
+        return texto;
+      }
+    } catch (error) {
+      if (error.name === "AbortError") {
+        throw new Error(mensagemTimeout);
+      }
+
+      ultimoErro = error;
+      if (tentativa >= tentativas - 1) throw error;
+      aguardarAntesDaProximaTentativa = 700 * (tentativa + 1);
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (aguardarAntesDaProximaTentativa > 0) {
+      await aguardar(aguardarAntesDaProximaTentativa);
+    }
+  }
+
+  throw ultimoErro || new Error("A API publica nao respondeu.");
+}
+
 async function consultarPncpJson(url, timeoutMs = 15000) {
   debugLog("Consultando PNCP:", url.toString());
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
-    const resposta = await fetch(url.toString(), {
-      headers: {
-        accept: "application/json",
-        "user-agent": "Mozilla/5.0",
-      },
-      signal: controller.signal,
-    });
-
-    const texto = await resposta.text();
-
-    if (!resposta.ok) {
-      throw new Error(`Status ${resposta.status}: ${texto}`);
-    }
-
+    const texto = await consultarTextoJsonComRetry(
+      url,
+      timeoutMs,
+      "O PNCP demorou demais para responder. Tente novamente em alguns segundos."
+    );
     return texto ? JSON.parse(texto) : null;
   } catch (error) {
-    if (error.name === "AbortError") {
-      throw new Error("O PNCP demorou demais para responder. Tente novamente em alguns segundos.");
-    }
-
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -1909,7 +1943,7 @@ async function enriquecerRegistroComPncp(registro) {
 
 async function enriquecerRegistrosComPncp(registros, limite = 150) {
   const enriquecidos = [];
-  const tamanhoLote = 5;
+  const tamanhoLote = 2;
 
   for (let i = 0; i < registros.length; i += tamanhoLote) {
     if (i >= limite) {
@@ -1920,6 +1954,9 @@ async function enriquecerRegistrosComPncp(registros, limite = 150) {
     const lote = registros.slice(i, Math.min(i + tamanhoLote, limite));
     const loteEnriquecido = await Promise.all(lote.map(enriquecerRegistroComPncp));
     enriquecidos.push(...loteEnriquecido);
+    if (i + tamanhoLote < Math.min(registros.length, limite)) {
+      await aguardar(350);
+    }
   }
 
   return enriquecidos;
@@ -3671,7 +3708,7 @@ app.get("/api/precos", async (req, res) => {
       const tamanhoPaginaPncp =
         abrangencia === "brasil"
           ? tamanhoPagina
-          : String(Math.max(Number(tamanhoPagina) || 0, 500));
+          : String(Math.max(Number(tamanhoPagina) || 0, 250));
       const endpoint =
         tipo === "servico"
           ? "/modulo-pesquisa-preco/3_consultarServico"
