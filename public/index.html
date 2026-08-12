@@ -2217,13 +2217,21 @@
     }
 
     async function verificarHistoricoItens(itens, token) {
-      const candidatos = itens.filter(i => !i.diretoPncp && !i.somenteSinapi && i.codigo);
+      const LIMITE_HISTORICO_AUTO = 12;
+      const candidatos = itens
+        .filter(i => !i.diretoPncp && !i.somenteSinapi && i.codigo)
+        .slice(0, LIMITE_HISTORICO_AUTO);
       const LOTE = 1;
       for (let i = 0; i < candidatos.length; i += LOTE) {
         if (verificacaoHistoricoToken !== token) return;
         await Promise.all(candidatos.slice(i, i + LOTE).map(async (item) => {
           try {
-            const r = await fetch(`/api/tem-historico?codigo=${encodeURIComponent(item.codigo)}&tipo=${item.tipo === "servico" ? "servico" : "material"}`);
+            const params = new URLSearchParams({
+              codigo: item.codigo,
+              tipo: item.tipo === "servico" ? "servico" : "material",
+              abrangencia: abrangenciaSelecionada(),
+            });
+            const r = await fetch(`/api/tem-historico?${params.toString()}`);
             const dados = await r.json();
             if (verificacaoHistoricoToken !== token) return;
             if (dados.temHistorico === false) {

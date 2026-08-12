@@ -3723,7 +3723,8 @@ app.get("/api/precos", async (req, res) => {
           return !Number.isNaN(valorUnitario) && valorUnitario > 0;
         });
 
-        const resultadoBase = resultadoOriginal.map((registro) => {
+        const resultadoFiltradoPorAbrangencia = filtrarRegistrosPorAbrangencia(resultadoOriginal, abrangencia);
+        const resultadoBase = resultadoFiltradoPorAbrangencia.map((registro) => {
           const licitacao = extrairIdentificacaoLicitacao(registro);
 
           return {
@@ -3735,7 +3736,6 @@ app.get("/api/precos", async (req, res) => {
 
         resultado = (await enriquecerRegistrosComPncp(resultadoBase, 50))
           .filter((registro) => linkPncpValido(registro.linkPncpGerado))
-          .filter((registro) => registroAtendeAbrangencia(registro, abrangencia))
           .sort((a, b) => timestampRegistro(b) - timestampRegistro(a));
 
         if (resultado.length) {
@@ -4247,9 +4247,10 @@ const HISTORICO_TTL_MS = 1000 * 60 * 60 * 24;
 app.get("/api/tem-historico", async (req, res) => {
   const codigo = String(req.query.codigo || "").trim();
   const tipo = String(req.query.tipo || "material").trim();
+  const abrangencia = normalizarAbrangencia(req.query.abrangencia);
   if (!codigo) return res.status(400).json({ erro: "Informe ?codigo=X" });
 
-  const cacheKey = `${tipo}:${codigo}`;
+  const cacheKey = `${tipo}:${codigo}:${abrangencia}`;
   const cached = cacheTemHistorico.get(cacheKey);
   if (cached && Date.now() - cached.at < HISTORICO_TTL_MS) {
     return res.json({ temHistorico: cached.temHistorico });
@@ -4259,11 +4260,13 @@ app.get("/api/tem-historico", async (req, res) => {
     ? "/modulo-pesquisa-preco/3_consultarServico"
     : "/modulo-pesquisa-preco/1_consultarMaterial";
 
-  const url = montarUrlPesquisaPreco(endpoint, codigo, "10");
+  const tamanhoPaginaHistorico = abrangencia === "brasil" ? "10" : "100";
+  const url = montarUrlPesquisaPreco(endpoint, codigo, tamanhoPaginaHistorico);
 
   try {
     const dados = await consultarJson(url, 12000);
-    const temHistorico = (dados.totalRegistros || 0) > 0;
+    const registros = filtrarRegistrosPorAbrangencia(dados.resultado || [], abrangencia);
+    const temHistorico = registros.length > 0;
     cacheTemHistorico.set(cacheKey, { temHistorico, at: Date.now() });
     res.json({ temHistorico });
   } catch {
