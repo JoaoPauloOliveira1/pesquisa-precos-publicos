@@ -92,51 +92,61 @@
     .brand-name { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.2; }
     .brand-sub { font-size: 12px; color: var(--muted); }
 
-    .etapas { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; font-size: 13px; }
-    .etapas li { display: flex; align-items: center; }
-    .etapa {
-      display: inline-flex; align-items: center; gap: 8px;
-      height: 34px; padding: 0 14px 0 6px; border-radius: 999px; border: 0;
-      background: transparent; color: var(--muted); font-weight: 600;
-      transition: background var(--t), color var(--t);
-    }
-    .etapa-num {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 22px; height: 22px; border-radius: 50%;
-      font-family: var(--mono); font-size: 11px; font-weight: 600;
-      background: var(--line-soft); color: var(--muted);
-    }
-    .etapa:not(:disabled):hover { background: var(--line-soft); color: var(--ink); }
-    .etapa:disabled { cursor: default; opacity: .55; }
-    .etapa.feita { color: var(--ok); }
-    .etapa.feita .etapa-num { background: var(--ok-soft); color: var(--ok); }
-    .etapa.atual { background: var(--accent-soft); color: var(--accent); }
-    .etapa.atual .etapa-num { background: var(--accent); color: #FFFFFF; }
-    .etapa-badge {
-      min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
-      background: var(--accent); color: #FFFFFF; font-family: var(--mono); font-size: 11px;
-      display: inline-flex; align-items: center; justify-content: center;
-    }
-    .etapa-sep { width: 18px; height: 1px; background: var(--line); }
+    .topbar-progresso { font-size: 13px; color: var(--muted); }
+    .topbar-progresso strong { color: var(--accent); }
 
-    /* ── ASSISTENTE EM ETAPAS ───────────────────── */
+    /* ── TELA ÚNICA: etapas empilhadas + cesta fixa ── */
     .wizard {
-      max-width: 1180px;
+      max-width: 1440px;
       margin: 0 auto;
-      padding: 32px 28px 40px;
-      min-height: calc(100vh - 200px);
+      padding: 28px 28px 40px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+      gap: 28px;
+      align-items: start;
     }
-    .wizard[data-etapa="1"] { max-width: 920px; }
-    .passo { display: flex; flex-direction: column; gap: 20px; animation: entrar .25s ease; }
-    .passo[hidden], .barra-passos[hidden] { display: none; }
-    @keyframes entrar { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-    .passo-cabecalho { display: flex; flex-direction: column; gap: 6px; }
-    .passo-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
-    .passo-cabecalho h2 { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; text-wrap: balance; }
-    .passo-cabecalho p { margin: 0; font-size: 15px; color: var(--muted); max-width: 68ch; }
-    .passo-cabecalho .status { margin-top: 6px; }
+    .fluxo { display: flex; flex-direction: column; min-width: 0; }
 
-    .form-busca { padding: 28px; display: flex; flex-direction: column; gap: 22px; }
+    .passo { position: relative; padding-bottom: 8px; scroll-margin-top: 84px; }
+    .passo:not(:last-child)::before {
+      content: ""; position: absolute; left: 17px; top: 44px; bottom: 0;
+      width: 2px; background: var(--line);
+    }
+    .passo[data-estado="feita"]:not(:last-child)::before { background: var(--ok); opacity: .35; }
+
+    .passo-topo {
+      display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 14px; align-items: center;
+      min-height: 52px; padding: 8px 0;
+    }
+    .passo-num {
+      width: 36px; height: 36px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: 14px; font-weight: 600;
+      background: var(--surface); border: 2px solid var(--line); color: var(--muted);
+      position: relative; z-index: 1;
+    }
+    .passo-titulos { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .passo-titulos h2 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; }
+    .passo-resumo { margin: 0; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .passo-resumo:empty { display: none; }
+    .passo-resumo strong { color: var(--ink); font-weight: 600; }
+    .passo-alterar { visibility: hidden; }
+
+    .passo-corpo { margin-left: 50px; padding: 4px 0 28px; display: flex; flex-direction: column; gap: 16px; min-width: 0; animation: entrar .25s ease; }
+    .passo-ajuda { margin: 0; font-size: 14px; color: var(--muted); max-width: 72ch; }
+    @keyframes entrar { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    .passo[data-estado="atual"] .passo-num { background: var(--accent); border-color: var(--accent); color: #FFFFFF; box-shadow: 0 0 0 4px var(--accent-soft); }
+    .passo[data-estado="atual"] .passo-resumo { display: none; }
+    .passo[data-estado="feita"] .passo-num { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+    .passo[data-estado="feita"] .passo-alterar { visibility: visible; }
+    .passo[data-estado="feita"] .passo-corpo,
+    .passo[data-estado="bloqueada"] .passo-corpo { display: none; }
+    .passo[data-estado="bloqueada"] .passo-titulos h2 { color: var(--faint); }
+    .passo[data-estado="feita"] .passo-topo { cursor: pointer; }
+    .passo[data-estado="feita"] .passo-topo:hover h2 { color: var(--accent); }
+
+    .form-busca { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
     .busca-input-grande { height: 54px; padding: 0 16px; }
     .campo .busca-input-grande input { height: 50px; font-size: 16px; }
     .form-opcoes { display: grid; grid-template-columns: 1fr 1.2fr 1.4fr 1fr; gap: 14px; align-items: end; }
@@ -145,18 +155,8 @@
     .form-rodape #statusBusca { margin-top: 0; }
     .btn-largo { min-width: 200px; margin-left: auto; }
 
-    .barra-passos {
-      position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
-      background: var(--surface); border-top: 1px solid var(--line);
-      box-shadow: 0 -6px 20px rgba(16, 25, 53, .06);
-    }
-    .barra-passos-inner {
-      max-width: 1180px; margin: 0 auto; padding: 12px 28px;
-      display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    }
-    .barra-passos-info { font-size: 13px; color: var(--muted); text-align: center; flex: 1; min-width: 0; }
-    .barra-passos-info strong { color: var(--ink); font-family: var(--mono); }
-    .barra-passos .btn:empty { visibility: hidden; }
+    .painel-cesta { position: sticky; top: 84px; max-height: calc(100vh - 100px); display: flex; min-width: 0; }
+    .painel-cesta .cesta { flex: 1; min-height: 0; }
 
     .card {
       background: var(--surface);
@@ -296,7 +296,7 @@
     .limpar-filtros-btn { height: 28px; border: 0; background: transparent; color: var(--accent); font-size: 12px; font-weight: 600; }
     .count-itens { padding: 0 20px 10px; font-size: 12px; color: var(--muted); }
 
-    .item-lista { display: flex; flex-direction: column; }
+    .item-lista { display: flex; flex-direction: column; max-height: min(62vh, 600px); overflow-y: auto; }
     .item {
       display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center;
       padding: 12px 20px; border-top: 1px solid var(--line-soft);
@@ -438,7 +438,7 @@
     /* ── CESTA ──────────────────────────────────── */
     .cesta { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
     .cesta .card-head { padding: 18px 20px 14px; margin: 0; border-bottom: 1px solid var(--line); }
-    .carrinho-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); }
+    .carrinho-lista { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
     .carrinho-grupo { padding: 14px 20px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--line-soft); }
     .carrinho-grupo-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
     .carrinho-grupo-topo .rotulo { color: var(--accent); }
@@ -458,10 +458,10 @@
     .grupo-input { width: 46px; height: 24px; padding: 0 4px; border: 1px solid var(--field); border-radius: 4px; font-size: 11px; font-family: var(--mono); text-align: center; background: var(--surface); }
     .grupo-input:focus { outline: none; border-color: var(--accent); }
     .link-copiar { border: 0; background: transparent; padding: 0; font-size: 11px; font-weight: 600; color: var(--accent); }
-    .cesta-acoes { padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; gap: 10px; border-top: 1px solid var(--line); background: var(--surface-2); }
-    .cesta-acoes-linha { display: grid; grid-template-columns: auto auto; gap: 8px; }
+    .cesta-acoes { padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); }
+    .cesta-acoes-linha { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 
-    .footer-credit { max-width: 1180px; margin: 0 auto; padding: 0 28px 96px; font-size: 12px; color: var(--muted); text-align: center; }
+    .footer-credit { max-width: 1440px; margin: 0 auto; padding: 0 28px 28px; font-size: 12px; color: var(--muted); text-align: center; }
     .carrinho-desc { padding-left: 15px; font-size: 12px; color: var(--ink-2); line-height: 1.35; overflow-wrap: anywhere; }
     .footer-credit strong { color: var(--ink-2); }
 
@@ -520,37 +520,36 @@
       .r-desvio { grid-area: desvio; justify-self: end; }
       .r-acoes { grid-area: acoes; }
     }
-    @media (max-width: 1100px) {
-      .etapa-nome { display: none; }
-      .etapa.atual .etapa-nome { display: inline; }
+    @media (max-width: 1180px) {
+      .wizard { grid-template-columns: minmax(0, 1fr); }
+      .painel-cesta { position: static; max-height: none; margin-left: 50px; }
     }
     @media (max-width: 860px) {
       .topbar { position: static; }
       .form-opcoes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .passo-cabecalho h2 { font-size: 23px; }
       .item { grid-template-columns: minmax(0, 1fr) auto; }
       .item .codigo { grid-row: auto; }
+      .topbar-progresso { display: none; }
     }
     @media (max-width: 560px) {
-      .topbar-inner, .wizard, .barra-passos-inner { padding-left: 16px; padding-right: 16px; }
-      .wizard { padding-top: 20px; }
+      .topbar-inner, .wizard { padding-left: 16px; padding-right: 16px; }
+      .wizard { padding-top: 16px; }
       .footer-credit { padding-left: 16px; padding-right: 16px; }
-      .topbar nav { width: 100%; }
-      .etapas { flex-wrap: nowrap; justify-content: space-between; }
-      .etapa-sep { flex: 1; min-width: 4px; }
-      .etapa { padding-right: 6px; }
       .brand-sep, .brand-sub { display: none; }
+      .passo:not(:last-child)::before { left: 13px; top: 38px; }
+      .passo-topo { grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; }
+      .passo-num { width: 28px; height: 28px; font-size: 12px; }
+      .passo-titulos h2 { font-size: 16px; }
+      .passo-corpo, .painel-cesta { margin-left: 0; }
       .form-busca { padding: 18px 16px; }
       .form-opcoes { grid-template-columns: minmax(0, 1fr); }
       .btn-largo { width: 100%; }
       .resumo { padding: 18px 16px; }
       .fonte-titulo, .resultado-linha, .resultado details, .fonte-stats, .paginacao-fonte, .item, .carrinho-grupo { padding-left: 16px; padding-right: 16px; }
-      .barra-passos-info { display: none; }
-      .cesta-acoes { flex-direction: column-reverse; align-items: stretch; }
-      .cesta-acoes-linha { grid-template-columns: minmax(0, 1fr); }
       .intro-credit { position: static; padding: 0 8vw 4vh; }
     }
   </style>
+
 
 </head>
 <body>
@@ -606,199 +605,201 @@
           <span class="brand-sub">EMLURB · Diretoria Executiva de Iluminação Pública</span>
         </div>
       </div>
-      <nav aria-label="Etapas da pesquisa">
-        <ol class="etapas">
-          <li><button type="button" class="etapa atual" data-etapa="1" aria-current="step"><span class="etapa-num">1</span><span class="etapa-nome">Buscar</span></button></li>
-          <li class="etapa-sep" aria-hidden="true"></li>
-          <li><button type="button" class="etapa" data-etapa="2" disabled><span class="etapa-num">2</span><span class="etapa-nome">Item do catálogo</span></button></li>
-          <li class="etapa-sep" aria-hidden="true"></li>
-          <li><button type="button" class="etapa" data-etapa="3" disabled><span class="etapa-num">3</span><span class="etapa-nome">Comparar preços</span></button></li>
-          <li class="etapa-sep" aria-hidden="true"></li>
-          <li><button type="button" class="etapa" data-etapa="4"><span class="etapa-num">4</span><span class="etapa-nome">Cesta</span><span class="etapa-badge hidden" id="badgeCesta">0</span></button></li>
-        </ol>
-      </nav>
+      <span class="topbar-progresso" id="topbarProgresso" aria-live="polite">Etapa <strong>1</strong> de 3 · Buscar</span>
     </div>
   </header>
 
   <main class="wizard app-shell" id="wizard" data-etapa="1">
+    <div class="fluxo">
 
-    <!-- ETAPA 1 — BUSCAR -->
-    <section class="passo" data-passo="1" aria-labelledby="tituloPasso1">
-      <div class="passo-cabecalho">
-        <span class="passo-eyebrow">Etapa 1 de 4</span>
-        <h2 id="tituloPasso1">O que você quer pesquisar?</h2>
-        <p>Descreva o material ou serviço, escolha onde procurar e em quais fontes. Na próxima etapa você escolhe o item exato do catálogo.</p>
-      </div>
+      <!-- ETAPA 1 — BUSCAR -->
+      <section class="passo" data-passo="1" data-estado="atual" aria-labelledby="tituloPasso1">
+        <div class="passo-topo" data-ir="1">
+          <span class="passo-num" aria-hidden="true">1</span>
+          <div class="passo-titulos">
+            <h2 id="tituloPasso1">O que você quer pesquisar?</h2>
+            <p class="passo-resumo" id="resumoPasso1"></p>
+          </div>
+          <button type="button" class="btn btn-sm passo-alterar" data-ir="1">Alterar busca</button>
+        </div>
+        <div class="passo-corpo">
+          <p class="passo-ajuda">Descreva o material ou serviço, escolha onde procurar e em quais fontes.</p>
 
-      <form class="card form-busca" onsubmit="event.preventDefault(); buscarItens();">
-        <label class="campo campo-descricao">
-          Descrição do item
-          <span class="busca-input busca-input-grande">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="color: var(--muted)"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
-            <input id="termo" placeholder="Ex.: eletroduto PVC 25 mm, cabo de cobre 10 mm², luminária LED 100 W" autocomplete="off" />
-          </span>
-        </label>
+          <form class="card form-busca" onsubmit="event.preventDefault(); buscarItens();">
+            <label class="campo campo-descricao">
+              Descrição do item
+              <span class="busca-input busca-input-grande">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="color: var(--muted)"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+                <input id="termo" placeholder="Ex.: eletroduto PVC 25 mm, cabo de cobre 10 mm², luminária LED 100 W" autocomplete="off" />
+              </span>
+            </label>
 
-        <div class="form-opcoes">
-          <label class="campo">
-            Tipo
-            <select id="tipo">
-              <option value="material">Material</option>
-              <option value="servico">Serviço</option>
-              <option value="ambos">Ambos</option>
-            </select>
-          </label>
-          <label class="campo campo-pncp campo-periodo">
-            Período PNCP
-            <select id="periodoMeses">
-              <option value="1">Último mês</option>
-              <option value="3">Últimos 3 meses</option>
-              <option value="6">Últimos 6 meses</option>
-              <option value="12" selected>Últimos 12 meses</option>
-              <option value="18">Últimos 18 meses</option>
-              <option value="24">Últimos 24 meses</option>
-            </select>
-          </label>
-          <div class="campo campo-abrangencia">
-            <span id="rotuloAbrangencia">Abrangência</span>
-            <div class="segmentado" role="group" aria-labelledby="rotuloAbrangencia">
-              <button type="button" data-abrangencia="brasil" aria-pressed="true">Brasil</button>
-              <button type="button" data-abrangencia="nordeste" aria-pressed="false">Nordeste</button>
-              <button type="button" data-abrangencia="pernambuco" aria-pressed="false">PE</button>
+            <div class="form-opcoes">
+              <label class="campo">
+                Tipo
+                <select id="tipo">
+                  <option value="material">Material</option>
+                  <option value="servico">Serviço</option>
+                  <option value="ambos">Ambos</option>
+                </select>
+              </label>
+              <label class="campo campo-pncp campo-periodo">
+                Período PNCP
+                <select id="periodoMeses">
+                  <option value="1">Último mês</option>
+                  <option value="3">Últimos 3 meses</option>
+                  <option value="6">Últimos 6 meses</option>
+                  <option value="12" selected>Últimos 12 meses</option>
+                  <option value="18">Últimos 18 meses</option>
+                  <option value="24">Últimos 24 meses</option>
+                </select>
+              </label>
+              <div class="campo campo-abrangencia">
+                <span id="rotuloAbrangencia">Abrangência</span>
+                <div class="segmentado" role="group" aria-labelledby="rotuloAbrangencia">
+                  <button type="button" data-abrangencia="brasil" aria-pressed="true">Brasil</button>
+                  <button type="button" data-abrangencia="nordeste" aria-pressed="false">Nordeste</button>
+                  <button type="button" data-abrangencia="pernambuco" aria-pressed="false">PE</button>
+                </div>
+                <select id="abrangencia" class="hidden" aria-hidden="true" tabindex="-1">
+                  <option value="pernambuco">Pernambuco</option>
+                  <option value="nordeste">Nordeste</option>
+                  <option value="brasil" selected>Brasil</option>
+                </select>
+              </div>
+              <label class="campo campo-pncp">
+                Itens do catálogo
+                <select id="limiteItens">
+                  <option value="10">Até 10</option>
+                  <option value="50">Até 50</option>
+                  <option value="100" selected>Até 100</option>
+                  <option value="200">Até 200</option>
+                </select>
+              </label>
             </div>
-            <select id="abrangencia" class="hidden" aria-hidden="true" tabindex="-1">
-              <option value="pernambuco">Pernambuco</option>
-              <option value="nordeste">Nordeste</option>
-              <option value="brasil" selected>Brasil</option>
-            </select>
-          </div>
-          <label class="campo campo-pncp">
-            Itens do catálogo
-            <select id="limiteItens">
-              <option value="10">Até 10</option>
-              <option value="50">Até 50</option>
-              <option value="100" selected>Até 100</option>
-              <option value="200">Até 200</option>
-            </select>
-          </label>
-        </div>
 
-        <div class="campo">
-          Fontes consultadas
-          <div class="fontes-panel">
-            <div class="fonte-toggle fonte-pncp ativo" data-fonte="pncp" role="switch" aria-checked="true" tabindex="0"><span class="fonte-dot"></span>PNCP / Compras.gov</div>
-            <div class="fonte-toggle fonte-sinapi disabled" data-fonte="sinapi" role="switch" aria-checked="false" aria-disabled="true" tabindex="-1" title="SINAPI indisponível neste ambiente"><span class="fonte-dot"></span>SINAPI</div>
-            <div class="fonte-toggle fonte-sicro" data-fonte="sicro" role="switch" aria-checked="false" tabindex="0"><span class="fonte-dot"></span>SICRO</div>
-            <div class="fonte-toggle fonte-orse" data-fonte="orse" role="switch" aria-checked="false" tabindex="0"><span class="fonte-dot"></span>ORSE-SE</div>
-            <div class="fonte-toggle fonte-peintegrado" data-fonte="peintegrado" role="switch" aria-checked="false" tabindex="0"><span class="fonte-dot"></span>PE Integrado</div>
-          </div>
-          <span class="fonte-aviso" id="statusSinapi"></span>
-          <span class="fonte-aviso">Com o PNCP ligado, a próxima etapa é escolher o item no catálogo. Sem ele, a busca vai direto para os preços das outras fontes.</span>
-        </div>
+            <div class="campo">
+              Fontes consultadas
+              <div class="fontes-panel">
+                <div class="fonte-toggle fonte-pncp ativo" data-fonte="pncp" role="switch" aria-checked="true" tabindex="0"><span class="fonte-dot"></span>PNCP / Compras.gov</div>
+                <div class="fonte-toggle fonte-sinapi disabled" data-fonte="sinapi" role="switch" aria-checked="false" aria-disabled="true" tabindex="-1" title="SINAPI indisponível neste ambiente"><span class="fonte-dot"></span>SINAPI</div>
+                <div class="fonte-toggle fonte-sicro" data-fonte="sicro" role="switch" aria-checked="false" tabindex="0"><span class="fonte-dot"></span>SICRO</div>
+                <div class="fonte-toggle fonte-orse" data-fonte="orse" role="switch" aria-checked="false" tabindex="0"><span class="fonte-dot"></span>ORSE-SE</div>
+                <div class="fonte-toggle fonte-peintegrado" data-fonte="peintegrado" role="switch" aria-checked="false" tabindex="0"><span class="fonte-dot"></span>PE Integrado</div>
+              </div>
+              <span class="fonte-aviso" id="statusSinapi"></span>
+              <span class="fonte-aviso">Com o PNCP ligado, o próximo passo é escolher o item no catálogo. Sem ele, a busca vai direto para os preços das outras fontes.</span>
+            </div>
 
-        <div id="sinapiPanel" class="sinapi-panel hidden">
-          <label class="campo">
-            Região SINAPI
-            <select id="sinapiRegiaoFiltro">
-              <option value="todas" selected>Todas as regiões</option>
-              <option value="Nordeste">Nordeste</option>
-              <option value="Norte">Norte</option>
-              <option value="Centro-Oeste">Centro-Oeste</option>
-              <option value="Sudeste">Sudeste</option>
-              <option value="Sul">Sul</option>
-            </select>
-          </label>
-          <label class="campo">
-            Tipo SINAPI
-            <select id="sinapiTipo">
-              <option value="ambos" selected>Itens e composições</option>
-              <option value="item">Somente itens</option>
-              <option value="composicao">Somente composições</option>
-            </select>
-          </label>
-          <label class="campo">
-            Base SINAPI
-            <input id="sinapiData" type="text" value="Mais atual disponível" disabled />
-          </label>
-          <label class="campo">
-            Regime SINAPI
-            <input id="sinapiRegime" type="text" value="Desonerado e não desonerado" disabled />
-          </label>
-        </div>
+            <div id="sinapiPanel" class="sinapi-panel hidden">
+              <label class="campo">
+                Região SINAPI
+                <select id="sinapiRegiaoFiltro">
+                  <option value="todas" selected>Todas as regiões</option>
+                  <option value="Nordeste">Nordeste</option>
+                  <option value="Norte">Norte</option>
+                  <option value="Centro-Oeste">Centro-Oeste</option>
+                  <option value="Sudeste">Sudeste</option>
+                  <option value="Sul">Sul</option>
+                </select>
+              </label>
+              <label class="campo">
+                Tipo SINAPI
+                <select id="sinapiTipo">
+                  <option value="ambos" selected>Itens e composições</option>
+                  <option value="item">Somente itens</option>
+                  <option value="composicao">Somente composições</option>
+                </select>
+              </label>
+              <label class="campo">
+                Base SINAPI
+                <input id="sinapiData" type="text" value="Mais atual disponível" disabled />
+              </label>
+              <label class="campo">
+                Regime SINAPI
+                <input id="sinapiRegime" type="text" value="Desonerado e não desonerado" disabled />
+              </label>
+            </div>
 
-        <div class="form-rodape">
-          <div id="statusBusca" class="status"></div>
-          <button id="buscarBtn" type="submit" class="btn btn-primario btn-largo">Buscar</button>
+            <div class="form-rodape">
+              <div id="statusBusca" class="status"></div>
+              <button id="buscarBtn" type="submit" class="btn btn-primario btn-largo">Buscar</button>
+            </div>
+          </form>
         </div>
-      </form>
-    </section>
-
-    <!-- ETAPA 2 — ITEM DO CATÁLOGO -->
-    <section class="passo" data-passo="2" aria-labelledby="tituloPasso2" hidden>
-      <div class="passo-cabecalho">
-        <span class="passo-eyebrow">Etapa 2 de 4</span>
-        <h2 id="tituloPasso2">Escolha o item do catálogo</h2>
-        <p id="resumoBuscaCatalogo">Selecione o item que corresponde ao que você procura. Os preços do PNCP são consultados pelo código do item.</p>
-        <div id="avisoCatalogo" class="status"></div>
-      </div>
-
-      <section id="cardItens" class="card hidden" aria-labelledby="tituloCatalogo">
-        <div class="card-head">
-          <h3 id="tituloCatalogo">Catálogo Compras.gov</h3>
-          <span id="totalItensCatalogo" class="card-meta"></span>
-        </div>
-        <div id="filtrosItens" class="filtros-catalogo hidden"></div>
-        <div id="countItens" class="count-itens hidden"></div>
-        <div id="listaItens" class="item-lista"></div>
       </section>
-    </section>
 
-    <!-- ETAPA 3 — COMPARAR PREÇOS -->
-    <section class="passo" data-passo="3" aria-labelledby="tituloPasso3" hidden>
-      <div class="passo-cabecalho">
-        <span class="passo-eyebrow">Etapa 3 de 4</span>
-        <h2 id="tituloPasso3">Compare os preços e monte a cesta</h2>
-        <p>Use “Adicionar” nos preços que entram na cotação. Preços fora da faixa de ±25% da mediana aparecem em vermelho.</p>
-      </div>
-
-      <section id="cardPrecos" class="card hidden" aria-labelledby="itemSelecionado">
-        <div class="resumo">
-          <div class="resumo-topo">
-            <div class="resumo-titulo">
-              <span id="itemCodigo" class="resumo-codigo"></span>
-              <h3 id="itemSelecionado"></h3>
-              <span id="resumoContagem" class="resumo-contagem"></span>
-            </div>
-            <div class="toolbar">
-              <button type="button" class="btn btn-sm" onclick="baixarCSV()">Baixar CSV dos resultados</button>
-            </div>
+      <!-- ETAPA 2 — ITEM DO CATÁLOGO -->
+      <section class="passo" data-passo="2" data-estado="bloqueada" aria-labelledby="tituloPasso2">
+        <div class="passo-topo" data-ir="2">
+          <span class="passo-num" aria-hidden="true">2</span>
+          <div class="passo-titulos">
+            <h2 id="tituloPasso2">Escolha o item do catálogo</h2>
+            <p class="passo-resumo" id="resumoPasso2"></p>
           </div>
-
-          <div class="kpis">
-            <div class="kpi"><span>Mediana</span><strong id="kpiMediana">-</strong></div>
-            <div class="kpi"><span>Média</span><strong id="kpiMedia">-</strong></div>
-            <div class="kpi menor"><span>Menor</span><strong id="kpiMenor">-</strong></div>
-            <div class="kpi maior"><span>Maior</span><strong id="kpiMaior">-</strong></div>
-          </div>
-
-          <div id="distribuicaoPrecos" class="distribuicao hidden"></div>
+          <button type="button" class="btn btn-sm passo-alterar" data-ir="2">Trocar item</button>
         </div>
-
-        <div id="tabelaPrecos"></div>
+        <div class="passo-corpo">
+          <p class="passo-ajuda" id="resumoBuscaCatalogo">Selecione o item que corresponde ao que você procura. Os preços do PNCP são consultados pelo código do item.</p>
+          <div id="avisoCatalogo" class="status"></div>
+          <section id="cardItens" class="card hidden" aria-labelledby="tituloCatalogo">
+            <div class="card-head">
+              <h3 id="tituloCatalogo">Catálogo Compras.gov</h3>
+              <span id="totalItensCatalogo" class="card-meta"></span>
+            </div>
+            <div id="filtrosItens" class="filtros-catalogo hidden"></div>
+            <div id="countItens" class="count-itens hidden"></div>
+            <div id="listaItens" class="item-lista"></div>
+          </section>
+        </div>
       </section>
-    </section>
 
-    <!-- ETAPA 4 — CESTA -->
-    <section class="passo" data-passo="4" aria-labelledby="tituloPasso4" hidden>
-      <div class="passo-cabecalho">
-        <span class="passo-eyebrow">Etapa 4 de 4</span>
-        <h2 id="tituloPasso4">Revise a cesta e exporte</h2>
-        <p>Confira os preços escolhidos e o número de item de cada um. Depois exporte para a planilha COTAÇÕES C ou gere o relatório em PDF.</p>
-      </div>
+      <!-- ETAPA 3 — COMPARAR PREÇOS -->
+      <section class="passo" data-passo="3" data-estado="bloqueada" aria-labelledby="tituloPasso3">
+        <div class="passo-topo" data-ir="3">
+          <span class="passo-num" aria-hidden="true">3</span>
+          <div class="passo-titulos">
+            <h2 id="tituloPasso3">Compare os preços e monte a cesta</h2>
+            <p class="passo-resumo" id="resumoPasso3"></p>
+          </div>
+          <button type="button" class="btn btn-sm passo-alterar" data-ir="3">Ver preços</button>
+        </div>
+        <div class="passo-corpo">
+          <p class="passo-ajuda">Use “Adicionar” nos preços que entram na cotação; eles vão para a cesta ao lado. Preços fora da faixa de ±25% da mediana aparecem em vermelho.</p>
+          <section id="cardPrecos" class="card hidden" aria-labelledby="itemSelecionado">
+            <div class="resumo">
+              <div class="resumo-topo">
+                <div class="resumo-titulo">
+                  <span id="itemCodigo" class="resumo-codigo"></span>
+                  <h3 id="itemSelecionado"></h3>
+                  <span id="resumoContagem" class="resumo-contagem"></span>
+                </div>
+                <div class="toolbar">
+                  <button type="button" class="btn btn-sm" onclick="baixarCSV()">Baixar CSV dos resultados</button>
+                </div>
+              </div>
 
+              <div class="kpis">
+                <div class="kpi"><span>Mediana</span><strong id="kpiMediana">-</strong></div>
+                <div class="kpi"><span>Média</span><strong id="kpiMedia">-</strong></div>
+                <div class="kpi menor"><span>Menor</span><strong id="kpiMenor">-</strong></div>
+                <div class="kpi maior"><span>Maior</span><strong id="kpiMaior">-</strong></div>
+              </div>
+
+              <div id="distribuicaoPrecos" class="distribuicao hidden"></div>
+            </div>
+
+            <div id="tabelaPrecos"></div>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <!-- CESTA — sempre visível -->
+    <aside class="painel-cesta" aria-labelledby="tituloCesta">
       <div class="card cesta">
         <div class="card-head">
-          <h3>Cesta de preços</h3>
+          <h2 id="tituloCesta">Cesta de preços</h2>
           <span id="cestaContagem" class="card-meta">vazia</span>
         </div>
         <input type="file" id="inputPlanilhaXlsx" accept=".xlsx" style="display:none" />
@@ -806,24 +807,15 @@
           <p class="empty">Nenhum preço na cesta. Use “Adicionar” nos resultados para montar a cotação.</p>
         </div>
         <div class="cesta-acoes">
-          <button type="button" class="btn btn-texto btn-perigo" onclick="limparCarrinho()">Limpar cesta</button>
+          <button type="button" class="btn btn-primario" onclick="exportarCotacoesC(this)">Exportar para planilha COTAÇÕES C</button>
           <div class="cesta-acoes-linha">
             <button type="button" class="btn" onclick="gerarRelatorioPdf(this)">Relatório PDF</button>
-            <button type="button" class="btn btn-primario" onclick="exportarCotacoesC(this)">Exportar para planilha COTAÇÕES C</button>
+            <button type="button" class="btn btn-texto btn-perigo" onclick="limparCarrinho()">Limpar cesta</button>
           </div>
         </div>
       </div>
-    </section>
+    </aside>
   </main>
-
-  <!-- Barra de navegação entre etapas -->
-  <div class="barra-passos" id="barraPassos" hidden>
-    <div class="barra-passos-inner">
-      <button type="button" class="btn" id="btnVoltarPasso"></button>
-      <span class="barra-passos-info" id="infoPasso"></span>
-      <button type="button" class="btn btn-primario" id="btnAvancarPasso"></button>
-    </div>
-  </div>
 
   <footer class="footer-credit">Desenvolvido por <strong>João Oliveira</strong> · EMLURB</footer>
 
@@ -2162,84 +2154,78 @@
       document.getElementById("resumoContagem").textContent = [contagem, abrangencia, periodoTexto].filter(Boolean).join(" · ");
 
       montarDistribuicao(registros, stats);
+      atualizarEtapas();
     }
 
     let etapaAtual = 1;
+    const NOMES_ETAPAS = { 1: "Buscar", 2: "Item do catálogo", 3: "Comparar preços" };
 
     function etapaDisponivel(n) {
-      if (n === 1 || n === 4) return true;
+      if (n === 1) return true;
       if (n === 2) return !document.getElementById("cardItens").classList.contains("hidden");
       if (n === 3) return !document.getElementById("cardPrecos").classList.contains("hidden");
-      return false;
-    }
-
-    function etapaConcluida(n) {
-      if (n === 1) return etapaDisponivel(2) || etapaDisponivel(3);
-      if (n === 2) return Boolean(itemAtual && !itemAtual.pesquisaPorTermo);
-      if (n === 3) return carrinho.length > 0;
       return false;
     }
 
     function irParaEtapa(n, opcoes = {}) {
       if (!etapaDisponivel(n)) return;
       etapaAtual = n;
-      const wizard = document.getElementById("wizard");
-      wizard.dataset.etapa = String(n);
-      document.querySelectorAll(".passo").forEach((passo) => {
-        passo.hidden = Number(passo.dataset.passo) !== n;
-      });
+      document.getElementById("wizard").dataset.etapa = String(n);
       atualizarEtapas();
-      if (!opcoes.semRolagem) window.scrollTo({ top: 0, behavior: "smooth" });
-      if (n === 1 && opcoes.focar) document.getElementById("termo")?.focus();
+      if (!opcoes.semRolagem) {
+        const passo = document.querySelector(`.passo[data-passo="${n}"]`);
+        requestAnimationFrame(() => passo?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      }
+      if (n === 1 && opcoes.focar) document.getElementById("termo")?.focus({ preventScroll: true });
     }
 
-    function configurarBotaoPasso(botao, texto, destino) {
-      botao.textContent = texto || "";
-      botao.onclick = texto ? () => (typeof destino === "function" ? destino() : irParaEtapa(destino)) : null;
+    function textoResumoBusca() {
+      const termo = document.getElementById("termo").value.trim();
+      const tipo = document.getElementById("tipo");
+      const abrangencia = { brasil: "Brasil", nordeste: "Nordeste", pernambuco: "Pernambuco" }[abrangenciaSelecionada()] || "";
+      const fontes = fontesSelecionadas().map(nomeFonte).join(", ");
+      if (!termo) return "";
+      return `<strong>“${escapeHtml(termo)}”</strong> · ${escapeHtml(tipo.options[tipo.selectedIndex]?.text || "")} · ${escapeHtml(abrangencia)} · ${escapeHtml(fontes)}`;
     }
 
     function atualizarEtapas() {
-      document.querySelectorAll(".etapa").forEach((el) => {
-        const n = Number(el.dataset.etapa);
-        const atual = n === etapaAtual;
-        const feita = !atual && etapaConcluida(n);
-        el.disabled = !etapaDisponivel(n);
-        el.classList.toggle("atual", atual);
-        el.classList.toggle("feita", feita);
-        el.querySelector(".etapa-num").textContent = feita ? "✓" : String(n);
-        if (atual) el.setAttribute("aria-current", "step");
-        else el.removeAttribute("aria-current");
+      document.querySelectorAll(".passo").forEach((passo) => {
+        const n = Number(passo.dataset.passo);
+        const estado = n === etapaAtual ? "atual" : etapaDisponivel(n) ? "feita" : "bloqueada";
+        passo.dataset.estado = estado;
+        passo.querySelector(".passo-num").textContent = estado === "feita" ? "✓" : String(n);
+        if (estado === "atual") passo.setAttribute("aria-current", "step");
+        else passo.removeAttribute("aria-current");
       });
 
-      const badge = document.getElementById("badgeCesta");
-      badge.textContent = String(carrinho.length);
-      badge.classList.toggle("hidden", !carrinho.length);
+      document.getElementById("resumoPasso1").innerHTML = textoResumoBusca();
 
-      const barra = document.getElementById("barraPassos");
-      const voltar = document.getElementById("btnVoltarPasso");
-      const avancar = document.getElementById("btnAvancarPasso");
-      const info = document.getElementById("infoPasso");
-      barra.hidden = etapaAtual === 1;
+      const totalCatalogo = itensCatalogoOriginais.filter((i) => !i.diretoPncp).length;
+      const itemEscolhido = itemAtual && !itemAtual.pesquisaPorTermo
+        ? `<strong>${escapeHtml(itemAtual.codigo ? `${itemAtual.codigo} · ` : "")}${escapeHtml(textoCurto(itemAtual.descricao || "", 110))}</strong>`
+        : "";
+      document.getElementById("resumoPasso2").innerHTML = etapaDisponivel(2)
+        ? (itemEscolhido || `${totalCatalogo} ${totalCatalogo === 1 ? "item encontrado" : "itens encontrados"} · escolha um para ver os preços`)
+        : "";
 
-      if (etapaAtual === 2) {
-        const total = itensCatalogoOriginais.filter((i) => !i.diretoPncp).length;
-        configurarBotaoPasso(voltar, "← Alterar busca", 1);
-        info.innerHTML = `${total} ${total === 1 ? "item" : "itens"} no catálogo · escolha um para ver os preços`;
-        configurarBotaoPasso(avancar, etapaDisponivel(3) ? (itemAtual && itemAtual.pesquisaPorTermo ? "Ver preços por descrição →" : "Voltar aos preços →") : "", 3);
-      } else if (etapaAtual === 3) {
-        const voltarCatalogo = etapaDisponivel(2) && !(itemAtual && itemAtual.pesquisaPorTermo && !fontesAtivas.pncp);
-        configurarBotaoPasso(voltar, voltarCatalogo ? "← Escolher outro item" : "← Alterar busca", voltarCatalogo ? 2 : 1);
-        info.innerHTML = `Cesta: <strong>${carrinho.length}</strong> ${carrinho.length === 1 ? "preço" : "preços"}`;
-        configurarBotaoPasso(avancar, `Revisar cesta (${carrinho.length}) →`, 4);
-      } else if (etapaAtual === 4) {
-        configurarBotaoPasso(voltar, etapaDisponivel(3) ? "← Voltar aos preços" : "← Voltar à busca", etapaDisponivel(3) ? 3 : 1);
-        info.innerHTML = carrinho.length ? `Cesta com <strong>${carrinho.length}</strong> ${carrinho.length === 1 ? "preço" : "preços"}` : "Cesta vazia";
-        configurarBotaoPasso(avancar, "Nova pesquisa", () => irParaEtapa(1, { focar: true }));
-      }
+      const stats = estatisticasGerais(registrosVisiveis());
+      document.getElementById("resumoPasso3").innerHTML = etapaDisponivel(3)
+        ? (stats
+          ? `<strong>${stats.quantidade}</strong> ${stats.quantidade === 1 ? "preço" : "preços"} · mediana <strong>${moeda(stats.mediana)}</strong> · ${carrinho.length} na cesta`
+          : "Consultando ou sem preços para este item")
+        : "";
+
+      document.getElementById("topbarProgresso").innerHTML =
+        `Etapa <strong>${etapaAtual}</strong> de 3 · ${NOMES_ETAPAS[etapaAtual]}${carrinho.length ? ` · cesta com <strong>${carrinho.length}</strong>` : ""}`;
     }
 
-    document.querySelectorAll(".etapa").forEach((botao) => {
-      botao.addEventListener("click", () => irParaEtapa(Number(botao.dataset.etapa)));
+    document.querySelectorAll(".passo-topo[data-ir]").forEach((topo) => {
+      topo.addEventListener("click", (event) => {
+        const passo = topo.closest(".passo");
+        if (passo.dataset.estado !== "feita") return;
+        event.preventDefault();
+        irParaEtapa(Number(topo.dataset.ir), { focar: true });
+      });
     });
 
     function montarResultados() {
