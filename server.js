@@ -4016,8 +4016,63 @@ function textoPdf(valor, fallback = "-") {
   return String(valor ?? "").trim() || fallback;
 }
 
+const PDF_CORES = {
+  accent: "#1F35A5",
+  accentSoft: "#E8ECFA",
+  ink: "#101935",
+  ink2: "#3A4560",
+  muted: "#556079",
+  line: "#DDE2EE",
+  soft: "#F5F7FD",
+  ok: "#13795B",
+  bad: "#B42318",
+};
+const PDF_LOGO = path.join(__dirname, "public", "assets", "emlurb-logo.png");
+const PDF_FAIXA_ACEITAVEL = 0.25;
+
+function formatarDataPdf(valor) {
+  const texto = String(valor ?? "").trim();
+  const iso = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  return texto || "-";
+}
+
+// Helvetica (WinAnsi) não tem alguns símbolos; troca pelos equivalentes seguros.
+function textoSeguroPdf(valor, fallback = "-") {
+  const texto = String(valor ?? "")
+    .replace(/[−–—]/g, "-")
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+  return texto || fallback;
+}
+
+function desenharCabecalhoPdf(doc, { geradoEm }) {
+  const { left, right } = doc.page.margins;
+  const largura = doc.page.width - left - right;
+  const topo = 28;
+
+  if (fs.existsSync(PDF_LOGO)) {
+    doc.image(PDF_LOGO, left, topo, { height: 30 });
+  }
+  doc.font("Helvetica-Bold").fontSize(13).fillColor(PDF_CORES.ink)
+    .text("Relatório de Pesquisa de Preços", left + 70, topo + 2, { width: largura - 230, lineBreak: false });
+  doc.font("Helvetica").fontSize(8).fillColor(PDF_CORES.muted)
+    .text("EMLURB · Diretoria Executiva de Iluminação Pública", left + 70, topo + 19, { width: largura - 230, lineBreak: false });
+  doc.font("Helvetica").fontSize(8).fillColor(PDF_CORES.muted)
+    .text("Pesquisa de Preços Recife", left, topo + 4, { width: largura, align: "right", lineBreak: false });
+  doc.text(`Gerado em ${geradoEm}`, left, topo + 17, { width: largura, align: "right", lineBreak: false });
+
+  doc.moveTo(left, topo + 40).lineTo(left + largura, topo + 40).lineWidth(1.5).strokeColor(PDF_CORES.accent).stroke();
+  doc.lineWidth(1);
+  doc.x = left;
+  doc.y = topo + 54;
+}
+
 app.post("/api/relatorio-pdf", (req, res) => {
   const selecionados = Array.isArray(req.body?.selecionados) ? req.body.selecionados : [];
+  const contexto = req.body?.contexto && typeof req.body.contexto === "object" ? req.body.contexto : {};
 
   if (!selecionados.length) {
     return res.status(400).json({
@@ -4027,80 +4082,266 @@ app.post("/api/relatorio-pdf", (req, res) => {
 
   const doc = new PDFDocument({
     size: "A4",
-    margin: 36,
+    margins: { top: 82, bottom: 50, left: 40, right: 40 },
     bufferPages: true,
+    info: { Title: "Relatório de Pesquisa de Preços", Author: "Pesquisa de Preços Recife · EMLURB" },
   });
 
-  const nomeArquivo = `relatorio-pesquisa-precos-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const agora = new Date();
+  const geradoEm = agora.toLocaleString("pt-BR", { timeZone: "America/Recife", dateStyle: "short", timeStyle: "short" });
+  const nomeArquivo = `relatorio-pesquisa-precos-${agora.toISOString().slice(0, 10)}.pdf`;
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${nomeArquivo}"`);
   doc.pipe(res);
 
-  doc.font("Helvetica-Bold").fontSize(16).text("Relatório de Pesquisa de Preços", { align: "center" });
-  doc.moveDown(0.4);
-  doc.font("Helvetica").fontSize(9).text(`Gerado em ${new Date().toLocaleString("pt-BR")}`, { align: "center" });
-  doc.moveDown(1);
+  const left = doc.page.margins.left;
+  const largura = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const limiteInferior = () => doc.page.height - doc.page.margins.bottom;
 
-  const resumoPorOrigem = selecionados.reduce((acc, item) => {
-    const origem = item.origem || "Fonte não informada";
-    acc[origem] = (acc[origem] || 0) + 1;
-    return acc;
-  }, {});
+  doc.on("pageAdded", () => desenharCabecalhoPdf(doc, { geradoEm }));
+  desenharCabecalhoPdf(doc, { geradoEm });
 
-  doc.font("Helvetica-Bold").fontSize(11).text("Resumo");
-  doc.font("Helvetica").fontSize(9).text(`Itens selecionados: ${selecionados.length}`);
-  doc.text(
-    Object.entries(resumoPorOrigem)
-      .map(([origem, total]) => `${origem}: ${total}`)
-      .join(" | ")
-  );
-  doc.moveDown(0.8);
+  const garantirEspaco = (altura) => {
+    if (doc.y + altura > limiteInferior()) doc.addPage();
+  };
 
-  selecionados.forEach((item, index) => {
-    if (doc.y > 690) doc.addPage();
-
-    const x = doc.page.margins.left;
-    const y = doc.y;
-    const largura = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-
-    doc.roundedRect(x, y, largura, 112, 6).stroke("#d1d5db");
-    doc.font("Helvetica-Bold").fontSize(10).fillColor("#111827").text(`${index + 1}. ${textoPdf(item.descricao)}`, x + 10, y + 10, {
-      width: largura - 20,
-      height: 28,
-      ellipsis: true,
+  // ── Agrupa por número de item da cesta ──
+  const grupos = new Map();
+  selecionados
+    .slice()
+    .sort((a, b) => (Number(a._itemGrupo) || 1) - (Number(b._itemGrupo) || 1))
+    .forEach((item) => {
+      const grupo = Number(item._itemGrupo) || 1;
+      if (!grupos.has(grupo)) grupos.set(grupo, []);
+      grupos.get(grupo).push(item);
     });
+  const fontesUsadas = [...new Set(selecionados.map((i) => textoSeguroPdf(i.origem, "Fonte não informada")))];
 
-    doc.font("Helvetica").fontSize(8).fillColor("#374151");
-    doc.text(`Fonte: ${textoPdf(item.origem)}${item.tipoSinapi ? ` - ${item.tipoSinapi}` : ""}`, x + 10, y + 42, { width: 250 });
-    doc.text(`Código: ${textoPdf(item.codigo)}`, x + 10, y + 56, { width: 160 });
-    doc.text(`Unidade: ${textoPdf(item.unidade)}`, x + 180, y + 56, { width: 120 });
-    doc.text(`Preço unitário: ${formatarMoedaPdf(item.precoUnitario)}`, x + 330, y + 56, { width: 170 });
-    doc.text(`Item PNCP: ${item.numeroItem ? `Item nº ${item.numeroItem}` : "-"}`, x + 10, y + 70, { width: 160 });
-    doc.text(`Quantidade: ${textoPdf(item.quantidade)}`, x + 180, y + 70, { width: 120 });
-    doc.text(`Fornecedor/Órgão: ${textoPdf(item.fornecedor || item.orgao)}`, x + 330, y + 70, { width: 170 });
-    doc.text(`Data: ${textoPdf(item.data)}`, x + 10, y + 84, { width: 150 });
-    doc.text(`Licitação/Referência: ${textoPdf(item.licitacao || item.referencia)}`, x + 180, y + 84, { width: 320 });
+  // ── Resumo da pesquisa ──
+  doc.font("Helvetica-Bold").fontSize(16).fillColor(PDF_CORES.ink).text("Resumo da pesquisa", left, doc.y);
+  doc.moveDown(0.5);
 
-    if (item.link) {
-      doc.fillColor("#1d4ed8").text("Abrir referência", x + 10, y + 98, {
-        link: item.link,
-        underline: true,
-      });
-      doc.fillColor("#374151");
+  const linhasContexto = [
+    ["Objeto pesquisado", textoSeguroPdf(contexto.termo, "")],
+    ["Período considerado", textoSeguroPdf(contexto.periodo, "")],
+    ["Abrangência", textoSeguroPdf(contexto.abrangencia, "")],
+    ["Fontes dos preços", fontesUsadas.join(", ")],
+  ].filter(([, valor]) => valor);
+
+  linhasContexto.forEach(([rotulo, valor]) => {
+    const y = doc.y;
+    doc.font("Helvetica").fontSize(9).fillColor(PDF_CORES.muted).text(rotulo, left, y, { width: 120 });
+    doc.font("Helvetica").fontSize(9).fillColor(PDF_CORES.ink).text(valor, left + 125, y, { width: largura - 125 });
+    doc.y = Math.max(doc.y, y + 13) + 2;
+  });
+  doc.moveDown(0.6);
+
+  const blocos = [
+    ["Itens", String(grupos.size)],
+    ["Preços selecionados", String(selecionados.length)],
+    ["Fontes", String(fontesUsadas.length)],
+  ];
+  const larguraBloco = (largura - 16) / blocos.length;
+  const yBlocos = doc.y;
+  blocos.forEach(([rotulo, valor], i) => {
+    const x = left + i * (larguraBloco + 8);
+    doc.roundedRect(x, yBlocos, larguraBloco, 46, 6).fillColor(PDF_CORES.soft).fill();
+    doc.font("Helvetica-Bold").fontSize(7).fillColor(PDF_CORES.muted)
+      .text(rotulo.toUpperCase(), x + 12, yBlocos + 9, { width: larguraBloco - 24, characterSpacing: 0.5 });
+    doc.font("Helvetica-Bold").fontSize(16).fillColor(PDF_CORES.ink)
+      .text(valor, x + 12, yBlocos + 21, { width: larguraBloco - 24 });
+  });
+  doc.y = yBlocos + 62;
+
+  // ── Tabela por item ──
+  const colunas = [
+    { chave: "n", titulo: "#", largura: 20 },
+    { chave: "fonte", titulo: "Fonte", largura: 60, quebra: true },
+    { chave: "orgao", titulo: "Órgão / fornecedor", largura: 161, quebra: true },
+    { chave: "data", titulo: "Data", largura: 54 },
+    { chave: "unidade", titulo: "Unid.", largura: 54, quebra: true },
+    { chave: "qtd", titulo: "Qtd.", largura: 44 },
+    { chave: "valor", titulo: "Valor unit.", largura: 72, alinhar: "right" },
+    { chave: "desvio", titulo: "Desvio", largura: 50, alinhar: "right" },
+  ];
+  const padX = 5;
+
+  const desenharCabecalhoTabela = () => {
+    const y = doc.y;
+    doc.rect(left, y, largura, 18).fillColor(PDF_CORES.accentSoft).fill();
+    let x = left;
+    colunas.forEach((col) => {
+      doc.font("Helvetica-Bold").fontSize(7).fillColor(PDF_CORES.accent)
+        .text(col.titulo.toUpperCase(), x + padX, y + 6, { width: col.largura - padX * 2, align: col.alinhar || "left", lineBreak: false });
+      x += col.largura;
+    });
+    doc.y = y + 18;
+  };
+
+  [...grupos.entries()].forEach(([grupo, itens], indiceGrupo) => {
+    const stats = calcularEstatisticas(itens);
+    const descricaoGrupo = textoSeguroPdf(itens[0]?.descricao, "Item sem descrição");
+
+    garantirEspaco(150);
+    if (indiceGrupo > 0) doc.moveDown(0.8);
+
+    // Título do item
+    doc.font("Helvetica-Bold").fontSize(8).fillColor(PDF_CORES.accent)
+      .text(`ITEM ${grupo}`, left, doc.y, { characterSpacing: 0.8 });
+    doc.font("Helvetica-Bold").fontSize(11.5).fillColor(PDF_CORES.ink)
+      .text(descricaoGrupo, left, doc.y + 2, { width: largura });
+    const unidades = [...new Set(itens.map((i) => textoSeguroPdf(i.unidade, "")).filter(Boolean))];
+    if (unidades.length) {
+      doc.font("Helvetica").fontSize(8).fillColor(PDF_CORES.muted)
+        .text(`Unidade${unidades.length > 1 ? "s" : ""}: ${unidades.join(", ")}`, left, doc.y + 1);
+    }
+    doc.moveDown(0.5);
+
+    // Estatísticas
+    const indicadores = [
+      ["Média", formatarMoedaPdf(stats.media), PDF_CORES.ink],
+      ["Mediana", formatarMoedaPdf(stats.mediana), PDF_CORES.ink],
+      ["Menor", formatarMoedaPdf(stats.menor), PDF_CORES.ok],
+      ["Maior", formatarMoedaPdf(stats.maior), PDF_CORES.bad],
+      ["Preços", String(stats.quantidade), PDF_CORES.ink],
+    ];
+    const larguraInd = largura / indicadores.length;
+    const yInd = doc.y;
+    doc.roundedRect(left, yInd, largura, 40, 6).lineWidth(0.8).strokeColor(PDF_CORES.line).stroke();
+    indicadores.forEach(([rotulo, valor, cor], i) => {
+      const x = left + i * larguraInd;
+      if (i > 0) doc.moveTo(x, yInd + 8).lineTo(x, yInd + 32).strokeColor(PDF_CORES.line).stroke();
+      doc.font("Helvetica-Bold").fontSize(6.5).fillColor(PDF_CORES.muted)
+        .text(rotulo.toUpperCase(), x + 10, yInd + 8, { width: larguraInd - 20, characterSpacing: 0.5 });
+      doc.font("Helvetica-Bold").fontSize(11).fillColor(cor)
+        .text(valor, x + 10, yInd + 20, { width: larguraInd - 20, lineBreak: false });
+    });
+    doc.y = yInd + 50;
+
+    if (stats.quantidade > 1) {
+      doc.font("Helvetica").fontSize(7.5).fillColor(PDF_CORES.muted).text(
+        `Média por extenso: ${valorPorExtenso(Math.round(stats.media * 100) / 100)}. ` +
+        `Faixa de ±25% da mediana: ${formatarMoedaPdf(stats.mediana * (1 - PDF_FAIXA_ACEITAVEL))} a ${formatarMoedaPdf(stats.mediana * (1 + PDF_FAIXA_ACEITAVEL))}.`,
+        left, doc.y, { width: largura }
+      );
+      doc.moveDown(0.5);
     }
 
-    doc.y = y + 126;
+    desenharCabecalhoTabela();
+
+    itens.forEach((item, i) => {
+      const valor = normalizarValor(item.precoUnitario);
+      const desvio = stats.mediana && !Number.isNaN(valor) ? (valor - stats.mediana) / stats.mediana : null;
+      const foraDaFaixa = desvio !== null && Math.abs(desvio) > PDF_FAIXA_ACEITAVEL;
+      const pct = desvio === null ? "-" : `${desvio > 0 ? "+" : ""}${Math.round(desvio * 100)}%`;
+
+      const celulas = {
+        n: String(i + 1),
+        fonte: textoSeguroPdf(`${item.origem || ""}${item.tipoSinapi ? ` ${item.tipoSinapi}` : ""}`),
+        orgao: textoSeguroPdf(item.orgao || item.fornecedor),
+        data: formatarDataPdf(item.data),
+        unidade: textoSeguroPdf(item.unidade),
+        qtd: textoSeguroPdf(item.quantidade),
+        valor: formatarMoedaPdf(item.precoUnitario),
+        desvio: pct,
+      };
+
+      const detalhes = [
+        item.descricao && textoSeguroPdf(item.descricao) !== descricaoGrupo ? textoSeguroPdf(item.descricao) : "",
+        item.fornecedor && item.orgao ? `Fornecedor: ${textoSeguroPdf(item.fornecedor)}` : "",
+        item.codigo ? `Código: ${textoSeguroPdf(item.codigo)}` : "",
+        item.numeroItem ? `Item nº ${textoSeguroPdf(item.numeroItem)}` : "",
+        item.licitacao || item.referencia ? `Ref.: ${textoSeguroPdf(item.licitacao || item.referencia)}` : "",
+      ].filter(Boolean).join("  ·  ");
+
+      const alturaOrgao = Math.max(...colunas.filter((c) => c.quebra).map((c) => {
+        doc.font(c.chave === "orgao" ? "Helvetica-Bold" : "Helvetica").fontSize(8);
+        return doc.heightOfString(celulas[c.chave], { width: c.largura - padX * 2 });
+      }));
+      const larguraDetalhe = largura - colunas[0].largura - padX * 2 - (item.link ? 70 : 0);
+      doc.font("Helvetica").fontSize(7);
+      const alturaDetalhe = detalhes ? doc.heightOfString(detalhes, { width: larguraDetalhe }) : 0;
+      const alturaLinha = Math.max(14, alturaOrgao) + (detalhes || item.link ? Math.max(alturaDetalhe, 9) + 4 : 0) + 10;
+
+      if (doc.y + alturaLinha > limiteInferior()) {
+        doc.addPage();
+        doc.font("Helvetica-Bold").fontSize(8).fillColor(PDF_CORES.muted)
+          .text(`ITEM ${grupo} (continuação)`, left, doc.y, { characterSpacing: 0.6 });
+        doc.moveDown(0.3);
+        desenharCabecalhoTabela();
+      }
+
+      const y = doc.y;
+      if (i % 2 === 1) doc.rect(left, y, largura, alturaLinha).fillColor(PDF_CORES.soft).fill();
+
+      let x = left;
+      colunas.forEach((col) => {
+        const ehValor = col.chave === "valor";
+        const ehDesvio = col.chave === "desvio";
+        doc.font(ehValor || col.chave === "orgao" ? "Helvetica-Bold" : "Helvetica")
+          .fontSize(8)
+          .fillColor(ehDesvio ? (foraDaFaixa ? PDF_CORES.bad : desvio !== null && desvio < 0 ? PDF_CORES.ok : PDF_CORES.ink2) : PDF_CORES.ink)
+          .text(celulas[col.chave], x + padX, y + 5, {
+            width: col.largura - padX * 2,
+            align: col.alinhar || "left",
+            lineBreak: Boolean(col.quebra),
+          });
+        x += col.largura;
+      });
+
+      if (detalhes || item.link) {
+        const yDetalhe = y + 5 + Math.max(14, alturaOrgao);
+        const xDetalhe = left + colunas[0].largura + padX;
+        if (detalhes) {
+          doc.font("Helvetica").fontSize(7).fillColor(PDF_CORES.muted)
+            .text(detalhes, xDetalhe, yDetalhe, { width: larguraDetalhe });
+        }
+        if (item.link) {
+          doc.font("Helvetica-Bold").fontSize(7).fillColor(PDF_CORES.accent)
+            .text("Abrir fonte", left + largura - 60 - padX, yDetalhe, { width: 60, align: "right", link: item.link, underline: true, lineBreak: false });
+        }
+      }
+
+      doc.moveTo(left, y + alturaLinha).lineTo(left + largura, y + alturaLinha).lineWidth(0.5).strokeColor(PDF_CORES.line).stroke();
+      doc.lineWidth(1);
+      doc.y = y + alturaLinha;
+      doc.x = left;
+    });
   });
 
+  // ── Notas e assinatura ──
+  garantirEspaco(150);
+  doc.moveDown(1.4);
+  doc.font("Helvetica-Bold").fontSize(9).fillColor(PDF_CORES.ink).text("Notas", left, doc.y);
+  doc.moveDown(0.3);
+  [
+    "Preços obtidos em fontes públicas oficiais (PNCP / Compras.gov, SINAPI, SICRO, ORSE-SE e Pernambuco Integrado), conforme indicado em cada linha.",
+    "O desvio compara cada preço com a mediana do item. Valores acima de 25% de diferença estão destacados em vermelho para análise.",
+    "Preços do Compras.gov sem link correspondem a compras sem edital publicado no PNCP; a referência indica o identificador da compra.",
+  ].forEach((nota) => {
+    doc.font("Helvetica").fontSize(7.5).fillColor(PDF_CORES.muted).text(`•  ${nota}`, left, doc.y, { width: largura });
+    doc.moveDown(0.2);
+  });
+
+  doc.moveDown(2.4);
+  const yAssinatura = Math.min(doc.y, limiteInferior() - 30);
+  const larguraAssinatura = (largura - 40) / 2;
+  [["Responsável pela pesquisa", left], ["Matrícula / cargo", left + larguraAssinatura + 40]].forEach(([rotulo, x]) => {
+    doc.moveTo(x, yAssinatura).lineTo(x + larguraAssinatura, yAssinatura).lineWidth(0.7).strokeColor(PDF_CORES.ink2).stroke();
+    doc.font("Helvetica").fontSize(7.5).fillColor(PDF_CORES.muted).text(rotulo, x, yAssinatura + 5, { width: larguraAssinatura, align: "center" });
+  });
+
+  // ── Rodapé com paginação ──
   const pages = doc.bufferedPageRange();
   for (let i = 0; i < pages.count; i++) {
     doc.switchToPage(i);
-    doc.font("Helvetica").fontSize(8).fillColor("#6b7280").text(
-      `Página ${i + 1} de ${pages.count}`,
-      doc.page.margins.left,
-      doc.page.height - 28,
-      { align: "center" }
-    );
+    // Escrever abaixo da margem inferior faria o pdfkit abrir uma página nova.
+    doc.page.margins.bottom = 0;
+    const yRodape = doc.page.height - 32;
+    doc.moveTo(left, yRodape - 6).lineTo(left + largura, yRodape - 6).lineWidth(0.5).strokeColor(PDF_CORES.line).stroke();
+    doc.font("Helvetica").fontSize(7).fillColor(PDF_CORES.muted)
+      .text("Pesquisa de Preços Recife · EMLURB", left, yRodape, { width: largura / 2, lineBreak: false, height: 10 });
+    doc.text(`Página ${i + 1} de ${pages.count}`, left + largura / 2, yRodape, { width: largura / 2, align: "right", lineBreak: false, height: 10 });
   }
 
   doc.end();

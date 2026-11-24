@@ -2479,7 +2479,14 @@
         const resposta = await fetch("/api/relatorio-pdf", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ selecionados: carrinho }),
+          body: JSON.stringify({
+            selecionados: carrinho,
+            contexto: {
+              termo: document.getElementById("termo").value.trim(),
+              periodo: document.getElementById("periodoMeses").selectedOptions[0]?.text || "",
+              abrangencia: ({ brasil: "Brasil", nordeste: "Nordeste", pernambuco: "Pernambuco" })[abrangenciaSelecionada()] || "",
+            },
+          }),
         });
 
         if (!resposta.ok) {
