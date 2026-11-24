@@ -949,6 +949,13 @@ function calcularEstatisticas(lista) {
   };
 }
 
+// IDs como idCompra (17 dígitos) passam de Number.MAX_SAFE_INTEGER e perdem precisão
+// no JSON.parse (93000305900502025 vira 93000305900502030). Converte inteiros com
+// 16+ dígitos em string antes do parse para preservar o valor exato.
+function protegerInteirosGrandes(texto) {
+  return String(texto).replace(/([:\[,]\s*)(-?\d{16,})(?=\s*[,}\]])/g, '$1"$2"');
+}
+
 async function consultarJson(url, timeoutMs = 15000) {
   debugLog("Consultando:", url.toString());
 
@@ -960,7 +967,7 @@ async function consultarJson(url, timeoutMs = 15000) {
     );
 
     try {
-      return JSON.parse(texto);
+      return JSON.parse(protegerInteirosGrandes(texto));
     } catch (error) {
       throw new Error("A API retornou um conteúdo que não é JSON.");
     }
@@ -1714,7 +1721,13 @@ async function buscarMetaPncpPorIdCompra(idCompra) {
 
         return mesmoUasg && mesmoAno && mesmoNumero;
       }) ||
-      itens[0] ||
+      // Sem correspondência exata, só aceita um resultado da mesma UASG e ano;
+      // nunca liga o preço a um edital de outro órgão.
+      itens.find((item) =>
+        infoCompra?.uasg &&
+        String(item.unidade_codigo || "") === infoCompra.uasg &&
+        String(item.ano || "") === infoCompra.anoCompra
+      ) ||
       null;
 
     cachePncpPorIdCompra.set(idCompra, encontrado);
@@ -3699,6 +3712,7 @@ app.get("/api/precos", async (req, res) => {
 
     let resultado = [];
     let erroPncp = "";
+    let historicoForaDoPeriodo = null;
     let usandoCachePrecos = false;
     let cacheAtualizadoEm = "";
     const cacheKeyPrecos = chaveCache("precos", tipo, codigo, termoSinapi, periodoMeses, abrangencia);
@@ -3724,18 +3738,41 @@ app.get("/api/precos", async (req, res) => {
         });
 
         const resultadoFiltradoPorAbrangencia = filtrarRegistrosPorAbrangencia(resultadoOriginal, abrangencia);
-        const resultadoBase = resultadoFiltradoPorAbrangencia.map((registro) => {
-          const licitacao = extrairIdentificacaoLicitacao(registro);
 
-          return {
-            ...registro,
-            licitacao,
-            linkPncpGerado: licitacao.linkPncp,
+        // Filtra pelo período ANTES de buscar os links no PNCP: não adianta
+        // enriquecer preços antigos que seriam descartados em seguida.
+        const resultadoNoPeriodo = filtrarRegistrosPorPeriodo(resultadoFiltradoPorAbrangencia, periodoMeses);
+        const foraDoPeriodo = resultadoFiltradoPorAbrangencia.length - resultadoNoPeriodo.length;
+        if (!resultadoNoPeriodo.length && foraDoPeriodo) {
+          const maisRecente = resultadoFiltradoPorAbrangencia
+            .map(timestampRegistro)
+            .filter(Boolean)
+            .sort((a, b) => b - a)[0];
+          historicoForaDoPeriodo = {
+            quantidade: foraDoPeriodo,
+            ultimaData: maisRecente ? new Date(maisRecente).toISOString().slice(0, 10) : "",
           };
-        });
+        }
 
+        const resultadoBase = resultadoNoPeriodo
+          .sort((a, b) => timestampRegistro(b) - timestampRegistro(a))
+          .map((registro) => {
+            const licitacao = extrairIdentificacaoLicitacao(registro);
+
+            return {
+              ...registro,
+              licitacao,
+              linkPncpGerado: licitacao.linkPncp,
+            };
+          });
+
+        // Preços sem link no PNCP (ex.: compras SISPP antigas) continuam válidos
+        // como fonte Compras.gov; antes eram descartados.
         resultado = (await enriquecerRegistrosComPncp(resultadoBase, 50))
-          .filter((registro) => linkPncpValido(registro.linkPncpGerado))
+          .map((registro) => ({
+            ...registro,
+            semLinkPncp: !linkPncpValido(registro.linkPncpGerado),
+          }))
           .sort((a, b) => timestampRegistro(b) - timestampRegistro(a));
 
         if (resultado.length) {
@@ -3774,6 +3811,12 @@ app.get("/api/precos", async (req, res) => {
 
     if (resultado.length) {
       gravarCache("precos", cacheKeyPrecos, { registros: resultado });
+    } else if (historicoForaDoPeriodo) {
+      const [ano, mes, dia] = historicoForaDoPeriodo.ultimaData.split("-");
+      erroPncp = `Este item não tem preços no PNCP nos últimos ${periodoMeses} meses. ` +
+        `Há ${historicoForaDoPeriodo.quantidade} preço(s) mais antigo(s)` +
+        (historicoForaDoPeriodo.ultimaData ? `; o mais recente é de ${dia}/${mes}/${ano}` : "") +
+        `. Amplie o período ou escolha outro item do catálogo.`;
     } else if (incluirPncp && cachePrecos?.payload?.registros?.length) {
       resultado = cachePrecos.payload.registros;
       usandoCachePrecos = true;
@@ -3840,6 +3883,7 @@ app.get("/api/precos", async (req, res) => {
       totalRegistros: resultado.length,
       totalRegistrosPncp: registrosPncp.length,
       erroPncp,
+      historicoForaDoPeriodo,
       cache: usandoCachePrecos,
       cacheAtualizadoEm,
       estatisticas,
@@ -4248,27 +4292,41 @@ app.get("/api/tem-historico", async (req, res) => {
   const codigo = String(req.query.codigo || "").trim();
   const tipo = String(req.query.tipo || "material").trim();
   const abrangencia = normalizarAbrangencia(req.query.abrangencia);
+  const periodoMeses = normalizarPeriodoMeses(req.query.periodoMeses);
   if (!codigo) return res.status(400).json({ erro: "Informe ?codigo=X" });
 
-  const cacheKey = `${tipo}:${codigo}:${abrangencia}`;
+  const cacheKey = `${tipo}:${codigo}:${abrangencia}:${periodoMeses}`;
   const cached = cacheTemHistorico.get(cacheKey);
   if (cached && Date.now() - cached.at < HISTORICO_TTL_MS) {
-    return res.json({ temHistorico: cached.temHistorico });
+    return res.json(cached.resposta);
   }
 
   const endpoint = tipo === "servico"
     ? "/modulo-pesquisa-preco/3_consultarServico"
     : "/modulo-pesquisa-preco/1_consultarMaterial";
 
-  const tamanhoPaginaHistorico = abrangencia === "brasil" ? "10" : "100";
-  const url = montarUrlPesquisaPreco(endpoint, codigo, tamanhoPaginaHistorico);
+  const LIMITE_HISTORICO = 100;
+  const url = montarUrlPesquisaPreco(endpoint, codigo, String(LIMITE_HISTORICO));
 
   try {
-    const dados = await consultarJson(url, 12000);
-    const registros = filtrarRegistrosPorAbrangencia(dados.resultado || [], abrangencia);
-    const temHistorico = registros.length > 0;
-    cacheTemHistorico.set(cacheKey, { temHistorico, at: Date.now() });
-    res.json({ temHistorico });
+    const dados = await consultarJson(url, 15000);
+    const comPreco = (dados.resultado || []).filter((registro) => {
+      const valor = normalizarValor(registro.precoUnitario);
+      return !Number.isNaN(valor) && valor > 0;
+    });
+    const naAbrangencia = filtrarRegistrosPorAbrangencia(comPreco, abrangencia);
+    const noPeriodo = filtrarRegistrosPorPeriodo(naAbrangencia, periodoMeses);
+    const maisRecente = naAbrangencia.map(timestampRegistro).filter(Boolean).sort((a, b) => b - a)[0];
+    const resposta = {
+      temHistorico: noPeriodo.length > 0,
+      quantidade: noPeriodo.length,
+      quantidadeTotal: naAbrangencia.length,
+      maisDe: (dados.resultado || []).length >= LIMITE_HISTORICO && noPeriodo.length >= LIMITE_HISTORICO * 0.9,
+      ultimaData: maisRecente ? new Date(maisRecente).toISOString().slice(0, 10) : "",
+      periodoMeses,
+    };
+    cacheTemHistorico.set(cacheKey, { resposta, at: Date.now() });
+    res.json(resposta);
   } catch {
     res.json({ temHistorico: null });
   }
@@ -4283,7 +4341,7 @@ app.get("/api/debug-pncp", async (req, res) => {
     ? "/modulo-pesquisa-preco/3_consultarServico"
     : "/modulo-pesquisa-preco/1_consultarMaterial";
 
-  const url = montarUrlPesquisaPreco(endpoint, codigo, "5");
+  const url = montarUrlPesquisaPreco(endpoint, codigo, "10");
 
   try {
     const dados = await consultarJson(url, 30000);

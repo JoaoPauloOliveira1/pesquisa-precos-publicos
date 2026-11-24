@@ -315,7 +315,15 @@
     }
     .item button:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
     .item.sem-historico .descricao, .item.sem-historico .codigo { color: var(--faint); }
-    .item.sem-historico .descricao::after { content: "Sem histórico de preços"; font-size: 11px; font-weight: 600; color: var(--faint); }
+    .item-historico { font-size: 11px; font-weight: 600; color: var(--muted); }
+    .item-historico:empty { display: none; }
+    .item-historico.verificando { color: var(--faint); font-weight: 500; }
+    .item-historico.com-precos { color: var(--ok); }
+    .item-historico.com-precos::before { content: "● "; }
+    .item-historico.sem-precos { color: var(--bad); }
+    .item.sem-historico .item-historico.sem-precos { color: var(--bad); opacity: .85; }
+    .r-tag { font-size: 11px; font-weight: 600; color: var(--warn); background: var(--warn-soft); padding: 1px 6px; border-radius: 4px; }
+    .aviso-acao { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
     .item.direto-pncp { background: var(--warn-soft); }
     .item.direto-pncp .codigo { display: none; }
 
@@ -844,6 +852,13 @@
       peintegrado: false,
     };
     let avisoPncpAtual = "";
+    let historicoForaPeriodoAtual = null;
+
+    function ampliarPeriodoEConsultar() {
+      document.getElementById("periodoMeses").value = "24";
+      if (itemAtual) consultarPrecos(itemAtual, null);
+      reverificarHistoricoCatalogo();
+    }
     let buscaCatalogoToken = 0;
     const REGIOES_UF = {
       AC: "Norte", AL: "Nordeste", AP: "Norte", AM: "Norte", BA: "Nordeste", CE: "Nordeste",
@@ -1184,6 +1199,12 @@
 
     function renderizarListaItens(itens, lista) {
       lista.innerHTML = "";
+      const codigosVerificados = new Set(
+        itensCatalogoOriginais
+          .filter((i) => !i.diretoPncp && !i.somenteSinapi && i.codigo)
+          .slice(0, LIMITE_HISTORICO_AUTO)
+          .map((i) => String(i.codigo))
+      );
       ordenarPncpDiretoPorUltimo(itens).forEach((item) => {
         const div = document.createElement("div");
         div.className = item.diretoPncp ? "item direto-pncp" : "item";
@@ -1204,11 +1225,16 @@
           <div class="descricao">
             ${escapeHtml(item.descricao || "-")}
             <span class="detalhe">${escapeHtml(detalhe)}</span>
+            <span class="item-historico"></span>
           </div>
           <button type="button">${item.diretoPncp ? "PNCP direto" : "Ver preços"}</button>
         `;
         if (item.codigo && codigosSemHistorico.has(item.codigo)) {
           div.classList.add("sem-historico");
+        }
+        if (item.codigo && !item.diretoPncp && !item.somenteSinapi) {
+          const conhecido = historicoPorCodigo.get(chaveHistorico(item.codigo));
+          if (conhecido || codigosVerificados.has(String(item.codigo))) aplicarHistoricoNoItem(div, conhecido);
         }
         if (itemAtual && !itemAtual.pesquisaPorTermo && itemAtual.codigo && String(itemAtual.codigo) === String(item.codigo)) {
           div.classList.add("consultado");
@@ -1298,37 +1324,92 @@
       aplicarFiltrosCatalogo();
     }
 
+    // Resultado da verificação antecipada de preços por código de item (período + abrangência atuais).
+    const historicoPorCodigo = new Map();
+    const LIMITE_HISTORICO_AUTO = 40;
+
+    function chaveHistorico(codigo) {
+      return `${codigo}|${abrangenciaSelecionada()}|${document.getElementById("periodoMeses").value}`;
+    }
+
+    function textoHistorico(h) {
+      if (!h) return { texto: "Verificando preços…", classe: "verificando" };
+      if (h.temHistorico === null) return { texto: "Não foi possível verificar agora", classe: "" };
+      const periodo = `${h.periodoMeses} meses`;
+      if (h.temHistorico) {
+        const qtd = h.maisDe ? `${h.quantidade}+` : String(h.quantidade);
+        return { texto: `${qtd} ${h.quantidade === 1 ? "preço" : "preços"} nos últimos ${periodo}`, classe: "com-precos" };
+      }
+      if (h.quantidadeTotal) {
+        const [ano, mes, dia] = String(h.ultimaData || "").split("-");
+        return { texto: `Sem preços nos últimos ${periodo}${h.ultimaData ? ` · último em ${dia}/${mes}/${ano}` : ""}`, classe: "sem-precos" };
+      }
+      return { texto: "Nenhum preço registrado no Compras.gov", classe: "sem-precos" };
+    }
+
+    function aplicarHistoricoNoItem(el, h) {
+      const alvo = el?.querySelector(".item-historico");
+      if (!alvo) return;
+      const { texto, classe } = textoHistorico(h);
+      alvo.textContent = texto;
+      alvo.className = `item-historico ${classe}`;
+    }
+
     async function verificarHistoricoItens(itens, token) {
-      const LIMITE_HISTORICO_AUTO = 12;
       const candidatos = itens
         .filter(i => !i.diretoPncp && !i.somenteSinapi && i.codigo)
         .slice(0, LIMITE_HISTORICO_AUTO);
-      const LOTE = 1;
-      for (let i = 0; i < candidatos.length; i += LOTE) {
-        if (verificacaoHistoricoToken !== token) return;
-        await Promise.all(candidatos.slice(i, i + LOTE).map(async (item) => {
+      const CONCORRENCIA = 3;
+      let proximo = 0;
+
+      const verificar = async (item) => {
+        const chave = chaveHistorico(item.codigo);
+        let dados = historicoPorCodigo.get(chave);
+        if (!dados) {
           try {
             const params = new URLSearchParams({
               codigo: item.codigo,
               tipo: item.tipo === "servico" ? "servico" : "material",
               abrangencia: abrangenciaSelecionada(),
+              periodoMeses: document.getElementById("periodoMeses").value,
             });
             const r = await fetch(`/api/tem-historico?${params.toString()}`);
-            const dados = await r.json();
-            if (verificacaoHistoricoToken !== token) return;
-            if (dados.temHistorico === false) {
-              codigosSemHistorico.add(item.codigo);
-              document.querySelector(`.item[data-codigo="${item.codigo}"]`)?.classList?.add("sem-historico");
-            } else if (dados.temHistorico === true) {
-              codigosSemHistorico.delete(item.codigo);
-              document.querySelector(`.item[data-codigo="${item.codigo}"]`)?.classList?.remove("sem-historico");
-            }
-          } catch {}
-        }));
-        if (verificacaoHistoricoToken === token) {
-          reorganizarItensHistorico(document.getElementById("listaItens"));
+            dados = await r.json();
+          } catch {
+            dados = { temHistorico: null };
+          }
+          if (dados.temHistorico !== null) historicoPorCodigo.set(chave, dados);
         }
-        if (i + LOTE < candidatos.length) await new Promise(r => setTimeout(r, 900));
+        if (verificacaoHistoricoToken !== token) return;
+
+        const el = document.querySelector(`.item[data-codigo="${CSS.escape(String(item.codigo))}"]`);
+        aplicarHistoricoNoItem(el, dados);
+        if (dados.temHistorico === false) {
+          codigosSemHistorico.add(item.codigo);
+          el?.classList.add("sem-historico");
+        } else if (dados.temHistorico === true) {
+          codigosSemHistorico.delete(item.codigo);
+          el?.classList.remove("sem-historico");
+        }
+      };
+
+      const trabalhador = async () => {
+        while (proximo < candidatos.length && verificacaoHistoricoToken === token) {
+          const item = candidatos[proximo++];
+          await verificar(item);
+          await new Promise((r) => setTimeout(r, 150));
+        }
+      };
+
+      await Promise.all(Array.from({ length: CONCORRENCIA }, trabalhador));
+      if (verificacaoHistoricoToken === token) {
+        reorganizarItensHistorico(document.getElementById("listaItens"));
+        const comPrecos = candidatos.filter((i) => historicoPorCodigo.get(chaveHistorico(i.codigo))?.temHistorico).length;
+        const aviso = document.getElementById("totalItensCatalogo");
+        if (aviso) {
+          const total = itensCatalogoOriginais.filter((i) => !i.diretoPncp).length;
+          aviso.textContent = `${total} ${total === 1 ? "item" : "itens"} · ${comPrecos} com preços no período${total > candidatos.length ? ` (dos ${candidatos.length} primeiros)` : ""}`;
+        }
       }
     }
 
@@ -1402,6 +1483,7 @@
         referencia: contratacao.numeroControlePncp || identificador,
         link: r.linkPncpGerado || contratacao.linkPncp || "",
         numeroItem: item.numeroItem || r.numeroItemCompra || "",
+        semLinkPncp: Boolean(r.semLinkPncp),
         meta: contratacao,
       };
     }
@@ -1685,7 +1767,7 @@
       registrosFontesAtuais = [];
       paginasFonte = {};
       estadoFontesConsulta = somenteFontesDiretas && fontesAtivas.pncp ? { ...estadoFontesConsulta } : {};
-      if (!somenteFontesDiretas) avisoPncpAtual = "";
+      if (!somenteFontesDiretas) { avisoPncpAtual = ""; historicoForaPeriodoAtual = null; }
       if (bloquearConsulta) {
         consultaEmAndamento = true;
         alternarBotoesConsulta(true);
@@ -1757,6 +1839,7 @@
 
             registrosAtuais = (dados.registros || []).map(normalizarRegistroPncp);
             avisoPncpAtual = dados.erroPncp || "";
+            historicoForaPeriodoAtual = dados.historicoForaDoPeriodo || null;
 
             if (dados.cache) {
               const atualizado = dados.cacheAtualizadoEm
@@ -1879,6 +1962,7 @@
               <span class="r-ref">
                 ${referencia ? `<span>${escapeHtml(textoCurto(referencia, 60))}</span>` : ""}
                 ${registro.link ? `<a href="${escapeHtml(registro.link)}" target="_blank" rel="noopener">${textoLink} ↗</a>` : ""}
+                ${registro.semLinkPncp ? `<span class="r-tag" title="Preço do Compras.gov sem edital correspondente publicado no PNCP">Sem edital no PNCP</span>` : ""}
               </span>
             </div>
             <span class="r-uf">${escapeHtml(registro.uf || "-")}</span>
@@ -2234,8 +2318,10 @@
       const pncp = registrosAtuais;
       const sinapi = filtrarSinapiPorRegiao(registrosSinapiAtuais);
       const adicionais = registrosFontesAtuais;
+      const periodoAtual = Number(document.getElementById("periodoMeses").value);
+      const podeAmpliar = historicoForaPeriodoAtual && periodoAtual < 24 && itemAtual && !itemAtual.pesquisaPorTermo;
       const avisoPncp = avisoPncpAtual
-        ? `<p class="status alerta">${escapeHtml(avisoPncpAtual)}</p>`
+        ? `<div class="status alerta aviso-acao"><span>${escapeHtml(avisoPncpAtual)}</span>${podeAmpliar ? `<button type="button" class="btn btn-sm" onclick="ampliarPeriodoEConsultar()">Ampliar para 24 meses</button>` : ""}</div>`
         : "";
 
       const temFonteCarregando = Object.values(estadoFontesConsulta).some((estado) => estado.status === "carregando");
@@ -2480,12 +2566,22 @@
       });
     }
 
+    function reverificarHistoricoCatalogo() {
+      if (!itensCatalogoOriginais.length) return;
+      const token = ++verificacaoHistoricoToken;
+      codigosSemHistorico = new Set();
+      aplicarFiltrosCatalogo();
+      verificarHistoricoItens(itensCatalogoOriginais, token);
+    }
+
     document.querySelectorAll(".segmentado [data-abrangencia]").forEach((botao) => {
       botao.addEventListener("click", () => {
         document.getElementById("abrangencia").value = botao.dataset.abrangencia;
         sincronizarAbrangencia();
+        reverificarHistoricoCatalogo();
       });
     });
+    document.getElementById("periodoMeses").addEventListener("change", reverificarHistoricoCatalogo);
 
     function atualizarUrl() {
       const termo = document.getElementById("termo").value.trim();
