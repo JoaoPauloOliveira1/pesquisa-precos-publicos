@@ -467,6 +467,8 @@
     .grupo-input:focus { outline: none; border-color: var(--accent); }
     .link-copiar { border: 0; background: transparent; padding: 0; font-size: 11px; font-weight: 600; color: var(--accent); }
     .cesta-acoes { padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); }
+    .link-modelo { align-self: center; color: var(--muted); font-weight: 500; }
+    .link-modelo:hover:not(:disabled) { color: var(--accent); }
     .cesta-acoes-linha { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 
     .footer-credit { max-width: 1440px; margin: 0 auto; padding: 0 28px 28px; font-size: 12px; color: var(--muted); text-align: center; }
@@ -815,11 +817,12 @@
           <p class="empty">Nenhum preço na cesta. Use “Adicionar” nos resultados para montar a cotação.</p>
         </div>
         <div class="cesta-acoes">
-          <button type="button" class="btn btn-primario" onclick="exportarCotacoesC(this)">Exportar para planilha COTAÇÕES C</button>
+          <button type="button" class="btn btn-primario" onclick="exportarPlanilhaCotacoes(this)">Exportar planilha COTAÇÕES C</button>
           <div class="cesta-acoes-linha">
             <button type="button" class="btn" onclick="gerarRelatorioPdf(this)">Relatório PDF</button>
             <button type="button" class="btn btn-texto btn-perigo" onclick="limparCarrinho()">Limpar cesta</button>
           </div>
+          <button type="button" class="btn btn-texto btn-sm link-modelo" onclick="exportarCotacoesC(this)" title="Preenche uma planilha modelo sua que tenha a aba COTAÇÕES C">Preencher meu modelo…</button>
         </div>
       </div>
     </aside>
@@ -2628,7 +2631,49 @@
       buscarItens();
     }
 
-    // ── Exportar para COTAÇÕES C ──────────────────────────────────────────────
+    function contextoPesquisa() {
+      return {
+        termo: document.getElementById("termo").value.trim(),
+        periodo: document.getElementById("periodoMeses").selectedOptions[0]?.text || "",
+        abrangencia: ({ brasil: "Brasil", nordeste: "Nordeste", pernambuco: "Pernambuco" })[abrangenciaSelecionada()] || "",
+      };
+    }
+
+    // ── Planilha COTAÇÕES C gerada pelo sistema ───────────────────────────────
+    async function exportarPlanilhaCotacoes(botao) {
+      if (!carrinho.length) {
+        alert("Adicione ao menos um preço à cesta para exportar.");
+        return;
+      }
+      setButtonLoading(botao, true, "Gerando planilha...", "Exportar planilha COTAÇÕES C");
+      try {
+        const resposta = await fetch("/api/exportar-cotacoes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ itens: carrinho, contexto: contextoPesquisa() }),
+        });
+        if (!resposta.ok) {
+          const erro = await resposta.json().catch(() => ({}));
+          alert(erro.erro || "Erro ao gerar a planilha.");
+          return;
+        }
+        const blob = await resposta.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `cotacoes-c-${new Date().toISOString().slice(0, 10)}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert("Erro de rede ao gerar a planilha: " + err.message);
+      } finally {
+        setButtonLoading(botao, false, "Gerando planilha...", "Exportar planilha COTAÇÕES C");
+      }
+    }
+
+    // ── Preencher planilha modelo do usuário (aba COTAÇÕES C) ──────────────────
     let planilhaXlsxSelecionada = null;
 
     function exportarCotacoesC(botao) {
@@ -2652,7 +2697,7 @@
     }
 
     async function _enviarExportacao(botao) {
-      setButtonLoading(botao, true, "Exportando...", "Exportar para planilha COTAÇÕES C");
+      setButtonLoading(botao, true, "Preenchendo...", "Preencher meu modelo…");
       try {
         const formData = new FormData();
         formData.append("planilha", planilhaXlsxSelecionada);
@@ -2683,7 +2728,7 @@
         planilhaXlsxSelecionada = null; // limpa em caso de erro de rede também
         alert("Erro de rede ao exportar: " + err.message);
       } finally {
-        setButtonLoading(botao, false, "Exportando...", "Exportar para planilha COTAÇÕES C");
+        setButtonLoading(botao, false, "Preenchendo...", "Preencher meu modelo…");
       }
     }
 

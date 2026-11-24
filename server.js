@@ -4748,6 +4748,375 @@ function gerarNotaCotacao(item) {
   return `* Valor de referência ${item.origem}: ${precoStr} ${extenso}${ref ? ` - ${ref}` : ""}${url ? " " + url : ""}`.trim();
 }
 
+// ─── PLANILHA COTAÇÕES C GERADA PELO SISTEMA (sem modelo) ─────────────────────
+const XLSX_CORES = {
+  accent: "FF1F35A5",
+  accentSoft: "FFE8ECFA",
+  soft: "FFF5F7FD",
+  ink: "FF101935",
+  muted: "FF556079",
+  line: "FFC9D0E0",
+  ok: "FF13795B",
+  okSoft: "FFE6F4EE",
+  bad: "FFB42318",
+  badSoft: "FFFDECEA",
+};
+const XLSX_MOEDA = '"R$" #,##0.00';
+const XLSX_FAIXA = 0.25;
+
+function dataParaCelula(valor) {
+  const texto = String(valor ?? "").trim();
+  const dia = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dia) return new Date(Date.UTC(Number(dia[1]), Number(dia[2]) - 1, Number(dia[3]), 12));
+  const mes = texto.match(/^(\d{4})-(\d{2})$/);
+  if (mes) return `${mes[2]}/${mes[1]}`;
+  return texto || "";
+}
+
+function bordaFina(cor = XLSX_CORES.line) {
+  const lado = { style: "thin", color: { argb: cor } };
+  return { top: lado, bottom: lado, left: lado, right: lado };
+}
+
+function alturaPorTexto(texto, caracteresPorLinha, alturaLinha = 13, minimo = 16) {
+  const linhas = String(texto || "").split("\n")
+    .reduce((total, parte) => total + Math.max(1, Math.ceil(parte.length / caracteresPorLinha)), 0);
+  return Math.max(minimo, linhas * alturaLinha + 4);
+}
+
+function formula(expr, resultado) {
+  return resultado === undefined || resultado === null || Number.isNaN(resultado)
+    ? { formula: expr }
+    : { formula: expr, result: resultado };
+}
+
+function montarPlanilhaCotacoes(itensBrutos, contexto = {}) {
+  const itens = itensBrutos.map((item) => {
+    const valor = normalizarValor(item.precoUnitario);
+    return { ...item, precoUnitario: Number.isNaN(valor) ? null : valor };
+  });
+
+  // Agrupa pelo Nº do item definido na cesta
+  const grupos = new Map();
+  itens
+    .slice()
+    .sort((a, b) => (Number(a._itemGrupo) || 1) - (Number(b._itemGrupo) || 1))
+    .forEach((item) => {
+      const n = Number(item._itemGrupo) || 1;
+      if (!grupos.has(n)) grupos.set(n, []);
+      grupos.get(n).push(item);
+    });
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Pesquisa de Preços Recife · EMLURB";
+  wb.calcProperties = { fullCalcOnLoad: true };
+  wb.created = new Date();
+  const geradoEm = new Date().toLocaleString("pt-BR", { timeZone: "America/Recife", dateStyle: "short", timeStyle: "short" });
+  const fontes = [...new Set(itens.map((i) => nomeFonteCotacao(i.origem)).filter(Boolean))];
+  const logoId = fs.existsSync(PDF_LOGO) ? wb.addImage({ filename: PDF_LOGO, extension: "png" }) : null;
+  const fonteBase = { name: "Arial", size: 10, color: { argb: XLSX_CORES.ink } };
+
+  const cabecalhoDocumento = (ws, titulo, ultimaColuna) => {
+    const letraFim = String.fromCharCode(64 + ultimaColuna);
+    ws.getRow(1).height = 24;
+    ws.getRow(2).height = 16;
+    ws.mergeCells(`C1:${letraFim}1`);
+    ws.mergeCells(`C2:${letraFim}2`);
+    ws.getCell("C1").value = titulo;
+    ws.getCell("C1").font = { name: "Arial", size: 14, bold: true, color: { argb: XLSX_CORES.ink } };
+    ws.getCell("C1").alignment = { vertical: "middle" };
+    ws.getCell("C2").value = "EMLURB · Diretoria Executiva de Iluminação Pública · Pesquisa de Preços Recife";
+    ws.getCell("C2").font = { name: "Arial", size: 9, color: { argb: XLSX_CORES.muted } };
+    if (logoId !== null) ws.addImage(logoId, { tl: { col: 0.1, row: 0.15 }, ext: { width: 92, height: 51 } });
+
+    const linhasContexto = [
+      ["Objeto pesquisado", contexto.termo],
+      ["Período · abrangência", [contexto.periodo, contexto.abrangencia].filter(Boolean).join(" · ")],
+      ["Fontes · gerado em", `${fontes.join(", ")} · ${geradoEm}`],
+    ];
+    linhasContexto.forEach(([rotulo, valor], i) => {
+      const r = 4 + i;
+      ws.getCell(`A${r}`).value = rotulo;
+      ws.getCell(`A${r}`).font = { name: "Arial", size: 9, color: { argb: XLSX_CORES.muted } };
+      ws.mergeCells(`A${r}:B${r}`);
+      ws.mergeCells(`C${r}:${letraFim}${r}`);
+      ws.getCell(`C${r}`).value = valor || "-";
+      ws.getCell(`C${r}`).font = { name: "Arial", size: 9, bold: i === 0, color: { argb: XLSX_CORES.ink } };
+    });
+    // linha azul separadora
+    for (let c = 1; c <= ultimaColuna; c++) {
+      ws.getRow(7).getCell(c).border = { bottom: { style: "medium", color: { argb: XLSX_CORES.accent } } };
+    }
+    ws.getRow(7).height = 6;
+  };
+
+  const configurarImpressao = (ws, ultimaLinhaTitulo) => {
+    ws.pageSetup = {
+      paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+      horizontalCentered: true,
+    };
+    if (ultimaLinhaTitulo) ws.pageSetup.printTitlesRow = `1:${ultimaLinhaTitulo}`;
+    ws.headerFooter = { oddFooter: "&L&8Pesquisa de Preços Recife · EMLURB&R&8Página &P de &N" };
+  };
+
+  // ── Aba COTAÇÕES C ──
+  const ws = wb.addWorksheet("COTAÇÕES C", { views: [{ showGridLines: false }] });
+  ws.columns = [
+    { width: 6 }, { width: 14 }, { width: 40 }, { width: 30 }, { width: 12 },
+    { width: 10 }, { width: 16 }, { width: 11 }, { width: 16 }, { width: 14 },
+  ];
+  cabecalhoDocumento(ws, "MAPA DE COTAÇÕES · PESQUISA DE PREÇOS", 10);
+
+  const resumoRefs = [];
+  let r = 9;
+
+  [...grupos.entries()].forEach(([n, precos]) => {
+    const item0 = precos[0];
+    const codigo = item0.codigo ? String(item0.codigo) : "";
+    const unidades = [...new Set(precos.map((p) => p.unidade).filter(Boolean))].join(", ");
+
+    // Título do item
+    ws.mergeCells(r, 1, r, 10);
+    const titulo = ws.getCell(r, 1);
+    titulo.value = {
+      richText: [
+        { text: `ITEM ${n}   `, font: { ...fonteBase, bold: true, color: { argb: XLSX_CORES.accent } } },
+        { text: item0.descricao || "Item sem descrição", font: { ...fonteBase, bold: true } },
+      ],
+    };
+    titulo.alignment = { wrapText: true, vertical: "middle" };
+    titulo.fill = { type: "pattern", pattern: "solid", fgColor: { argb: XLSX_CORES.accentSoft } };
+    ws.getRow(r).height = alturaPorTexto(item0.descricao, 130, 14, 22);
+    r++;
+
+    ws.mergeCells(r, 1, r, 10);
+    ws.getCell(r, 1).value = [codigo && `Código: ${codigo}`, unidades && `Unidade: ${unidades}`, `${precos.length} preço(s)`].filter(Boolean).join("   ·   ");
+    ws.getCell(r, 1).font = { name: "Arial", size: 9, color: { argb: XLSX_CORES.muted } };
+    r++;
+
+    // Cabeçalho da tabela
+    const cab = ["Nº", "FONTE", "ÓRGÃO / FORNECEDOR", "REFERÊNCIA", "DATA", "UNID.", "VALOR UNITÁRIO", "DESVIO", "SITUAÇÃO", "LINK"];
+    cab.forEach((texto, i) => {
+      const c = ws.getCell(r, i + 1);
+      c.value = texto;
+      c.font = { name: "Arial", size: 8, bold: true, color: { argb: "FFFFFFFF" } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: XLSX_CORES.accent } };
+      c.alignment = { horizontal: i >= 6 && i <= 7 ? "right" : "center", vertical: "middle", wrapText: true };
+      c.border = bordaFina(XLSX_CORES.accent);
+    });
+    ws.getRow(r).height = 20;
+    r++;
+
+    const primeira = r;
+    const ultima = r + precos.length - 1;
+    const linhaMenor = ultima + 1;
+    const linhaMaior = ultima + 2;
+    const linhaMediana = ultima + 3;
+    const linhaMedia = ultima + 4;
+    const valores = precos.map((p) => p.precoUnitario).filter((v) => typeof v === "number" && v > 0);
+    const stats = calcularEstatisticas(precos);
+    const refMediana = `$G$${linhaMediana}`;
+
+    precos.forEach((p, i) => {
+      const linha = ws.getRow(r);
+      const orgao = [p.orgao, p.fornecedor && p.fornecedor !== p.orgao ? p.fornecedor : ""].filter(Boolean).join("\n");
+      const desvio = stats.mediana && typeof p.precoUnitario === "number" ? (p.precoUnitario - stats.mediana) / stats.mediana : null;
+      const valoresLinha = [
+        i + 1,
+        nomeFonteCotacao(p.origem),
+        orgao || "-",
+        p.licitacao || p.referencia || "-",
+        dataParaCelula(p.data),
+        p.unidade || "-",
+        p.precoUnitario,
+        formula(`IF(${refMediana}=0,"",(G${r}-${refMediana})/${refMediana})`, desvio),
+        formula(`IF(H${r}="","",IF(ABS(H${r})>${XLSX_FAIXA},"Fora da faixa","Dentro da faixa"))`, desvio === null ? "" : Math.abs(desvio) > XLSX_FAIXA ? "Fora da faixa" : "Dentro da faixa"),
+        p.link ? { text: "Abrir fonte", hyperlink: p.link } : "-",
+      ];
+      valoresLinha.forEach((valor, ci) => {
+        const c = linha.getCell(ci + 1);
+        c.value = valor;
+        c.font = { ...fonteBase, size: 9 };
+        c.border = bordaFina();
+        c.alignment = { vertical: "top", wrapText: ci === 2 || ci === 3, horizontal: ci === 0 || ci === 4 || ci === 5 || ci === 8 ? "center" : ci === 6 || ci === 7 ? "right" : "left" };
+        if (i % 2 === 1) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: XLSX_CORES.soft } };
+      });
+      linha.getCell(5).numFmt = "dd/mm/yyyy";
+      linha.getCell(7).numFmt = XLSX_MOEDA;
+      linha.getCell(7).font = { ...fonteBase, size: 9, bold: true };
+      linha.getCell(8).numFmt = '+0%;-0%;0%';
+      if (p.link) linha.getCell(10).font = { name: "Arial", size: 9, color: { argb: XLSX_CORES.accent }, underline: true };
+      linha.height = Math.max(alturaPorTexto(orgao, 42, 12, 18), alturaPorTexto(p.licitacao || p.referencia, 30, 12, 18));
+      r++;
+    });
+
+    ws.addConditionalFormatting({
+      ref: `H${primeira}:I${ultima}`,
+      rules: [
+        { type: "expression", priority: 1, formulae: [`AND($H${primeira}<>"",ABS($H${primeira})>${XLSX_FAIXA})`], style: { font: { color: { argb: XLSX_CORES.bad }, bold: true }, fill: { type: "pattern", pattern: "solid", bgColor: { argb: XLSX_CORES.badSoft } } } },
+        { type: "expression", priority: 2, formulae: [`AND($H${primeira}<>"",ABS($H${primeira})<=${XLSX_FAIXA})`], style: { font: { color: { argb: XLSX_CORES.ok } } } },
+      ],
+    });
+
+    // Estatísticas (fórmulas sobre a coluna de valores do bloco)
+    const faixa = `G${primeira}:G${ultima}`;
+    const linhasStats = [
+      [linhaMenor, "MENOR PREÇO", `MIN(${faixa})`, valores.length ? stats.menor : null, false],
+      [linhaMaior, "MAIOR PREÇO", `MAX(${faixa})`, valores.length ? stats.maior : null, false],
+      [linhaMediana, "MEDIANA", `MEDIAN(${faixa})`, valores.length ? stats.mediana : null, false],
+      [linhaMedia, "VALOR ESTIMADO (MÉDIA)", `AVERAGE(${faixa})`, valores.length ? stats.media : null, true],
+    ];
+    linhasStats.forEach(([linha, rotulo, expr, resultado, destaque]) => {
+      ws.mergeCells(linha, 1, linha, 6);
+      const cr = ws.getCell(linha, 1);
+      cr.value = rotulo;
+      cr.alignment = { horizontal: "right", vertical: "middle" };
+      cr.font = { name: "Arial", size: destaque ? 10 : 9, bold: true, color: { argb: destaque ? XLSX_CORES.accent : XLSX_CORES.muted } };
+      const cv = ws.getCell(linha, 7);
+      cv.value = formula(expr, resultado);
+      cv.numFmt = XLSX_MOEDA;
+      cv.alignment = { horizontal: "right", vertical: "middle" };
+      cv.font = { name: "Arial", size: destaque ? 11 : 9, bold: true, color: { argb: XLSX_CORES.ink } };
+      cv.border = bordaFina(destaque ? XLSX_CORES.accent : XLSX_CORES.line);
+      if (destaque) {
+        cv.fill = { type: "pattern", pattern: "solid", fgColor: { argb: XLSX_CORES.accentSoft } };
+        ws.getRow(linha).height = 20;
+      }
+    });
+    r = linhaMedia + 1;
+
+    ws.mergeCells(r, 1, r, 10);
+    ws.getCell(r, 1).value = valores.length
+      ? `Valor estimado por extenso: ${valorPorExtenso(Math.round(stats.media * 100) / 100)}. Faixa aceitável (±25% da mediana): ${formatarMoedaPdf(stats.mediana * (1 - XLSX_FAIXA))} a ${formatarMoedaPdf(stats.mediana * (1 + XLSX_FAIXA))}.`
+      : "Sem valores numéricos para calcular.";
+    ws.getCell(r, 1).font = { name: "Arial", size: 9, italic: true, color: { argb: XLSX_CORES.muted } };
+    r += 2;
+
+    // Notas de cada fonte
+    ws.getCell(r, 1).value = "NOTAS";
+    ws.getCell(r, 1).font = { name: "Arial", size: 8, bold: true, color: { argb: XLSX_CORES.muted } };
+    r++;
+    precos.forEach((p) => {
+      const nota = gerarNotaCotacao(p);
+      ws.mergeCells(r, 1, r, 10);
+      const c = ws.getCell(r, 1);
+      c.value = nota;
+      c.font = { name: "Arial", size: 8, color: { argb: XLSX_CORES.ink } };
+      c.alignment = { wrapText: true, vertical: "top" };
+      ws.getRow(r).height = alturaPorTexto(nota, 170, 11, 14);
+      r++;
+    });
+
+    resumoRefs.push({ n, codigo, descricao: item0.descricao || "", unidade: unidades, primeira, ultima, linhaMedia, stats, qtd: valores.length });
+    r += 2;
+  });
+
+  ws.views = [{ showGridLines: false, state: "frozen", ySplit: 7 }];
+  configurarImpressao(ws, 7);
+
+  // ── Aba Resumo ──
+  const wr = wb.addWorksheet("Resumo", { views: [{ showGridLines: false }] });
+  wr.columns = [
+    { width: 7 }, { width: 13 }, { width: 52 }, { width: 12 }, { width: 10 },
+    { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 18 },
+  ];
+  cabecalhoDocumento(wr, "RESUMO DA PESQUISA DE PREÇOS", 10);
+  const cabResumo = ["ITEM", "CÓDIGO", "ESPECIFICAÇÃO", "UNID.", "Nº PREÇOS", "MENOR", "MAIOR", "MEDIANA", "MÉDIA", "VALOR ESTIMADO"];
+  cabResumo.forEach((texto, i) => {
+    const c = wr.getCell(9, i + 1);
+    c.value = texto;
+    c.font = { name: "Arial", size: 8, bold: true, color: { argb: "FFFFFFFF" } };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: XLSX_CORES.accent } };
+    c.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    c.border = bordaFina(XLSX_CORES.accent);
+  });
+  wr.getRow(9).height = 22;
+  const aba = "'COTAÇÕES C'";
+  resumoRefs.forEach((ref, i) => {
+    const linha = 10 + i;
+    const faixa = `${aba}!G${ref.primeira}:G${ref.ultima}`;
+    const valores = [
+      ref.n,
+      ref.codigo || "-",
+      ref.descricao,
+      ref.unidade || "-",
+      formula(`COUNT(${faixa})`, ref.qtd),
+      formula(`MIN(${faixa})`, ref.qtd ? ref.stats.menor : null),
+      formula(`MAX(${faixa})`, ref.qtd ? ref.stats.maior : null),
+      formula(`MEDIAN(${faixa})`, ref.qtd ? ref.stats.mediana : null),
+      formula(`AVERAGE(${faixa})`, ref.qtd ? ref.stats.media : null),
+      formula(`${aba}!G${ref.linhaMedia}`, ref.qtd ? ref.stats.media : null),
+    ];
+    valores.forEach((valor, ci) => {
+      const c = wr.getCell(linha, ci + 1);
+      c.value = valor;
+      c.font = { ...fonteBase, size: 9, bold: ci === 9 };
+      c.border = bordaFina();
+      c.alignment = { vertical: "top", wrapText: ci === 2, horizontal: ci <= 1 || ci === 3 || ci === 4 ? "center" : ci >= 5 ? "right" : "left" };
+      if (ci >= 5) c.numFmt = XLSX_MOEDA;
+      if (ci === 9) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: XLSX_CORES.accentSoft } };
+      else if (i % 2 === 1) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: XLSX_CORES.soft } };
+    });
+    wr.getRow(linha).height = alturaPorTexto(ref.descricao, 58, 12, 18);
+  });
+  wr.views = [{ showGridLines: false, state: "frozen", ySplit: 9 }];
+  configurarImpressao(wr, 9);
+
+  // ── Aba Dados (tabela plana com filtro) ──
+  const wd = wb.addWorksheet("Dados");
+  const colunasDados = [
+    ["Item", 7], ["Fonte", 14], ["Código", 14], ["Descrição", 50], ["Unidade", 10], ["Quantidade", 11],
+    ["Valor unitário", 15], ["Órgão", 36], ["Fornecedor", 30], ["UF", 6], ["Data", 12],
+    ["Referência", 30], ["Nº item na licitação", 12], ["Link", 40],
+  ];
+  wd.columns = colunasDados.map(([header, width]) => ({ header, width }));
+  wd.getRow(1).eachCell((c) => {
+    c.font = { name: "Arial", size: 9, bold: true, color: { argb: "FFFFFFFF" } };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: XLSX_CORES.accent } };
+    c.alignment = { vertical: "middle", wrapText: true };
+  });
+  wd.getRow(1).height = 22;
+  [...grupos.entries()].forEach(([n, precos]) => {
+    precos.forEach((p) => {
+      const linha = wd.addRow([
+        n, nomeFonteCotacao(p.origem), p.codigo || "", p.descricao || "", p.unidade || "",
+        p.quantidade === "" || p.quantidade == null ? "" : (Number(p.quantidade) || p.quantidade),
+        p.precoUnitario, p.orgao || "", p.fornecedor || "", p.uf || "", dataParaCelula(p.data),
+        p.licitacao || p.referencia || "", p.numeroItem || "", p.link ? { text: p.link, hyperlink: p.link } : "",
+      ]);
+      linha.font = { name: "Arial", size: 9 };
+      linha.getCell(7).numFmt = XLSX_MOEDA;
+      linha.getCell(11).numFmt = "dd/mm/yyyy";
+    });
+  });
+  wd.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: colunasDados.length } };
+  wd.views = [{ state: "frozen", ySplit: 1 }];
+
+  return wb;
+}
+
+app.post("/api/exportar-cotacoes", async (req, res) => {
+  if (!ExcelJS) {
+    return res.status(503).json({ erro: "Dependência exceljs não instalada. Execute: npm install exceljs" });
+  }
+  const itens = Array.isArray(req.body?.itens) ? req.body.itens : [];
+  const contexto = req.body?.contexto && typeof req.body.contexto === "object" ? req.body.contexto : {};
+  if (!itens.length) return res.status(400).json({ erro: "Selecione ao menos um preço." });
+
+  try {
+    const wb = montarPlanilhaCotacoes(itens, contexto);
+    const nomeArq = `cotacoes-c-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${nomeArq}"`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error("Erro ao gerar planilha de cotações:", err);
+    if (!res.headersSent) res.status(500).json({ erro: "Erro ao gerar a planilha de cotações." });
+  }
+});
+
 // ─── EXPORTAR COTAÇÕES C ──────────────────────────────────────────────────────
 app.post("/api/exportar-cotacoes-c", async (req, res) => {
   if (!multerLib || !ExcelJS) {
